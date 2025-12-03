@@ -6,7 +6,7 @@ This Python script provides a GUI-based tool to automate the initial setup for D
 ## Features
 
 ### ✓ GUI Interface
-- User-friendly graphical interface using tkinter
+- User-friendly graphical interface using PyQt5
 - Browse buttons for folder and file selection
 - Real-time output log display
 - Automatic execution without user prompts
@@ -168,8 +168,8 @@ After completing Step 0 and Step 1, you can:
 ## Requirements
 
 - Python 3.6 or higher
-- tkinter (usually included with Python)
-- Standard library only (no other external dependencies)
+- PyQt5 (install with: `pip install PyQt5`)
+- Standard library modules (os, shutil, re, csv, pathlib, threading, sys)
 
 ## Error Handling
 
@@ -193,5 +193,6 @@ The script includes comprehensive error handling:
 Created for MZ hydraulic pump simulation batch processing
 
 ## Version
+3.0.0 - PyQt5 GUI-based version with modern interface and threading
 2.0.0 - GUI-based version with CSV import and automatic execution (no prompts)
 1.0.0 - Initial release with Step 0 and Step 1 implementation
