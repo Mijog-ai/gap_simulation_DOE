@@ -367,6 +367,9 @@ class DOEBatchSetup:
 
                 # Create modified scalar.txt content
                 modified_scalar = scalar_lines.copy()
+                # Update paths to point to IM_piston subfolder (relative paths)
+                modified_scalar[0] = "IM_piston/piston_pr.inp\n"
+                modified_scalar[1] = "IM_piston/piston_pr_scaled.inp\n"
                 modified_scalar[3] = f"{base_lk} {scaled_lk}\n"
 
                 # Write scalar.txt to the folder
