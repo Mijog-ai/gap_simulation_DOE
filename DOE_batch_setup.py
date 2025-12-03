@@ -8,10 +8,14 @@ import os
 import shutil
 import re
 import csv
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
 from pathlib import Path
 import threading
+import sys
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QLabel, QLineEdit, QPushButton,
+                             QTextEdit, QFileDialog, QMessageBox, QFrame)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QFont, QPalette, QColor
 
 
 class DOEBatchSetup:
@@ -273,183 +277,37 @@ class DOEBatchSetup:
             return None
 
 
-class DOEBatchGUI:
-    """
-    GUI for DOE Batch Setup
-    """
-    def __init__(self, root):
-        self.root = root
-        self.root.title("DOE Batch Simulation Setup")
-        self.root.geometry("800x600")
+class WorkerThread(QThread):
+    """Worker thread for running batch setup without blocking GUI"""
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
 
-        # Variables
-        self.base_folder_var = tk.StringVar()
-        self.csv_file_var = tk.StringVar()
+    def __init__(self, base_folder, csv_file):
+        super().__init__()
+        self.base_folder = base_folder
+        self.csv_file = csv_file
 
-        # Create GUI elements
-        self.create_widgets()
-
-    def create_widgets(self):
-        """Create all GUI widgets"""
-        # Title
-        title_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
-        title_frame.pack(fill=tk.X)
-
-        title_label = tk.Label(
-            title_frame,
-            text="DOE BATCH SIMULATION SETUP",
-            font=("Arial", 16, "bold"),
-            bg="#2c3e50",
-            fg="white"
-        )
-        title_label.pack()
-
-        # Input Frame
-        input_frame = tk.Frame(self.root, padx=20, pady=20)
-        input_frame.pack(fill=tk.X)
-
-        # Base Folder Selection
-        tk.Label(
-            input_frame,
-            text="Base Folder Path:",
-            font=("Arial", 10, "bold")
-        ).grid(row=0, column=0, sticky="w", pady=5)
-
-        tk.Entry(
-            input_frame,
-            textvariable=self.base_folder_var,
-            width=60
-        ).grid(row=0, column=1, padx=5, pady=5)
-
-        tk.Button(
-            input_frame,
-            text="Browse",
-            command=self.browse_base_folder,
-            width=10
-        ).grid(row=0, column=2, padx=5, pady=5)
-
-        # CSV File Selection
-        tk.Label(
-            input_frame,
-            text="CSV File (lK_scale_value):",
-            font=("Arial", 10, "bold")
-        ).grid(row=1, column=0, sticky="w", pady=5)
-
-        tk.Entry(
-            input_frame,
-            textvariable=self.csv_file_var,
-            width=60
-        ).grid(row=1, column=1, padx=5, pady=5)
-
-        tk.Button(
-            input_frame,
-            text="Browse",
-            command=self.browse_csv_file,
-            width=10
-        ).grid(row=1, column=2, padx=5, pady=5)
-
-        # Run Button
-        button_frame = tk.Frame(self.root, pady=10)
-        button_frame.pack()
-
-        self.run_button = tk.Button(
-            button_frame,
-            text="Run Batch Setup",
-            command=self.run_setup,
-            font=("Arial", 12, "bold"),
-            bg="#27ae60",
-            fg="white",
-            width=20,
-            height=2
-        )
-        self.run_button.pack()
-
-        # Output Text Area
-        output_frame = tk.Frame(self.root, padx=20, pady=10)
-        output_frame.pack(fill=tk.BOTH, expand=True)
-
-        tk.Label(
-            output_frame,
-            text="Output Log:",
-            font=("Arial", 10, "bold")
-        ).pack(anchor="w")
-
-        self.output_text = scrolledtext.ScrolledText(
-            output_frame,
-            wrap=tk.WORD,
-            font=("Courier", 9),
-            bg="#f8f9fa"
-        )
-        self.output_text.pack(fill=tk.BOTH, expand=True)
-
-    def browse_base_folder(self):
-        """Browse for base folder"""
-        folder_path = filedialog.askdirectory(title="Select Base Folder")
-        if folder_path:
-            self.base_folder_var.set(folder_path)
-            self.log_output(f"Base folder selected: {folder_path}\n")
-
-    def browse_csv_file(self):
-        """Browse for CSV file"""
-        file_path = filedialog.askopenfilename(
-            title="Select CSV File",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        if file_path:
-            self.csv_file_var.set(file_path)
-            self.log_output(f"CSV file selected: {file_path}\n")
-
-    def log_output(self, message):
-        """Log message to output text area"""
-        self.output_text.insert(tk.END, message)
-        self.output_text.see(tk.END)
-        self.root.update_idletasks()
-
-    def run_setup(self):
-        """Run the batch setup process"""
-        base_folder = self.base_folder_var.get()
-        csv_file = self.csv_file_var.get()
-
-        # Validate inputs
-        if not base_folder:
-            messagebox.showerror("Error", "Please select a base folder!")
-            return
-
-        if not csv_file:
-            messagebox.showerror("Error", "Please select a CSV file!")
-            return
-
-        # Disable run button
-        self.run_button.config(state=tk.DISABLED, text="Running...")
-        self.output_text.delete(1.0, tk.END)
-
-        # Run in a separate thread to keep GUI responsive
-        thread = threading.Thread(target=self.execute_setup, args=(base_folder, csv_file))
-        thread.daemon = True
-        thread.start()
-
-    def execute_setup(self, base_folder, csv_file):
+    def run(self):
         """Execute the actual setup process"""
         try:
             # Redirect print statements to GUI
-            import sys
             from io import StringIO
+            import builtins
 
-            # Custom print function that also outputs to GUI
+            # Custom print function that emits to GUI
             original_print = print
             def gui_print(*args, **kwargs):
                 output = StringIO()
                 original_print(*args, file=output, **kwargs)
                 message = output.getvalue()
-                self.log_output(message)
+                self.output_signal.emit(message)
                 original_print(*args, **kwargs)
 
             # Replace built-in print
-            import builtins
             builtins.print = gui_print
 
             # Initialize the setup
-            setup = DOEBatchSetup(base_folder)
+            setup = DOEBatchSetup(self.base_folder)
 
             # Verify folder structure
             print("\n")
@@ -465,15 +323,17 @@ class DOEBatchGUI:
                         status.get('Zscalar'), status.get('geometry_txt')]):
                 print("❌ Cannot proceed due to missing critical files/folders.")
                 print("Please ensure the folder structure is correct and try again.")
-                messagebox.showerror("Error", "Missing critical files/folders. Check the output log.")
+                self.finished_signal.emit(False, "Missing critical files/folders. Check the output log.")
+                builtins.print = original_print
                 return
 
             # Read lK_scale_values from CSV
-            lk_values = setup.read_lk_scale_values(csv_file)
+            lk_values = setup.read_lk_scale_values(self.csv_file)
 
             if not lk_values:
                 print("❌ Could not read lK_scale_values from CSV file.")
-                messagebox.showerror("Error", "Failed to read CSV file. Check the output log.")
+                self.finished_signal.emit(False, "Failed to read CSV file. Check the output log.")
+                builtins.print = original_print
                 return
 
             # Execute Step 0
@@ -497,10 +357,10 @@ class DOEBatchGUI:
                 for key, val in geometry_values.items():
                     print(f"  {key}: {val}")
                 print(f"\nlK_scale_values from CSV: {lk_values}")
-                messagebox.showinfo("Success", f"Batch setup completed successfully!\n{len(lk_values)} lK_scale_values loaded.")
+                self.finished_signal.emit(True, f"Batch setup completed successfully!\n{len(lk_values)} lK_scale_values loaded.")
             else:
                 print("\n⚠ Setup completed with warnings. Please check the errors above.")
-                messagebox.showwarning("Warning", "Setup completed with warnings. Check the output log.")
+                self.finished_signal.emit(False, "Setup completed with warnings. Check the output log.")
 
             print("\n")
 
@@ -508,23 +368,223 @@ class DOEBatchGUI:
             builtins.print = original_print
 
         except Exception as e:
-            self.log_output(f"\n✗ Error during setup: {e}\n")
-            messagebox.showerror("Error", f"An error occurred: {e}")
+            self.output_signal.emit(f"\n✗ Error during setup: {e}\n")
+            self.finished_signal.emit(False, f"An error occurred: {e}")
             import builtins
             builtins.print = original_print
 
-        finally:
-            # Re-enable run button
-            self.run_button.config(state=tk.NORMAL, text="Run Batch Setup")
+
+class DOEBatchGUI(QMainWindow):
+    """
+    GUI for DOE Batch Setup using PyQt5
+    """
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("DOE Batch Simulation Setup")
+        self.setGeometry(100, 100, 800, 600)
+
+        # Variables
+        self.base_folder_path = ""
+        self.csv_file_path = ""
+        self.worker_thread = None
+
+        # Create GUI elements
+        self.create_widgets()
+
+    def create_widgets(self):
+        """Create all GUI widgets"""
+        # Central widget
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        # Main layout
+        main_layout = QVBoxLayout()
+        central_widget.setLayout(main_layout)
+
+        # Title
+        title_frame = QFrame()
+        title_frame.setStyleSheet("background-color: #2c3e50; padding: 10px;")
+        title_layout = QVBoxLayout()
+        title_frame.setLayout(title_layout)
+
+        title_label = QLabel("DOE BATCH SIMULATION SETUP")
+        title_label.setFont(QFont("Arial", 16, QFont.Bold))
+        title_label.setStyleSheet("color: white;")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_layout.addWidget(title_label)
+
+        main_layout.addWidget(title_frame)
+
+        # Input section
+        input_widget = QWidget()
+        input_widget.setContentsMargins(20, 20, 20, 20)
+        input_layout = QVBoxLayout()
+        input_widget.setLayout(input_layout)
+
+        # Base Folder Selection
+        base_folder_layout = QHBoxLayout()
+        base_folder_label = QLabel("Base Folder Path:")
+        base_folder_label.setFont(QFont("Arial", 10, QFont.Bold))
+        base_folder_label.setMinimumWidth(180)
+        base_folder_layout.addWidget(base_folder_label)
+
+        self.base_folder_entry = QLineEdit()
+        self.base_folder_entry.setMinimumWidth(400)
+        base_folder_layout.addWidget(self.base_folder_entry)
+
+        base_folder_button = QPushButton("Browse")
+        base_folder_button.setMaximumWidth(100)
+        base_folder_button.clicked.connect(self.browse_base_folder)
+        base_folder_layout.addWidget(base_folder_button)
+
+        input_layout.addLayout(base_folder_layout)
+
+        # CSV File Selection
+        csv_file_layout = QHBoxLayout()
+        csv_file_label = QLabel("CSV File (lK_scale_value):")
+        csv_file_label.setFont(QFont("Arial", 10, QFont.Bold))
+        csv_file_label.setMinimumWidth(180)
+        csv_file_layout.addWidget(csv_file_label)
+
+        self.csv_file_entry = QLineEdit()
+        self.csv_file_entry.setMinimumWidth(400)
+        csv_file_layout.addWidget(self.csv_file_entry)
+
+        csv_file_button = QPushButton("Browse")
+        csv_file_button.setMaximumWidth(100)
+        csv_file_button.clicked.connect(self.browse_csv_file)
+        csv_file_layout.addWidget(csv_file_button)
+
+        input_layout.addLayout(csv_file_layout)
+
+        main_layout.addWidget(input_widget)
+
+        # Run Button
+        button_widget = QWidget()
+        button_layout = QHBoxLayout()
+        button_widget.setLayout(button_layout)
+
+        self.run_button = QPushButton("Run Batch Setup")
+        self.run_button.setFont(QFont("Arial", 12, QFont.Bold))
+        self.run_button.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                padding: 15px 30px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.run_button.clicked.connect(self.run_setup)
+        button_layout.addStretch()
+        button_layout.addWidget(self.run_button)
+        button_layout.addStretch()
+
+        main_layout.addWidget(button_widget)
+
+        # Output Text Area
+        output_widget = QWidget()
+        output_widget.setContentsMargins(20, 10, 20, 20)
+        output_layout = QVBoxLayout()
+        output_widget.setLayout(output_layout)
+
+        output_label = QLabel("Output Log:")
+        output_label.setFont(QFont("Arial", 10, QFont.Bold))
+        output_layout.addWidget(output_label)
+
+        self.output_text = QTextEdit()
+        self.output_text.setReadOnly(True)
+        self.output_text.setFont(QFont("Courier", 9))
+        self.output_text.setStyleSheet("background-color: #f8f9fa;")
+        output_layout.addWidget(self.output_text)
+
+        main_layout.addWidget(output_widget)
+
+    def browse_base_folder(self):
+        """Browse for base folder"""
+        folder_path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Base Folder",
+            "",
+            QFileDialog.ShowDirsOnly
+        )
+        if folder_path:
+            self.base_folder_path = folder_path
+            self.base_folder_entry.setText(folder_path)
+            self.log_output(f"Base folder selected: {folder_path}\n")
+
+    def browse_csv_file(self):
+        """Browse for CSV file"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select CSV File",
+            "",
+            "CSV files (*.csv);;All files (*.*)"
+        )
+        if file_path:
+            self.csv_file_path = file_path
+            self.csv_file_entry.setText(file_path)
+            self.log_output(f"CSV file selected: {file_path}\n")
+
+    def log_output(self, message):
+        """Log message to output text area"""
+        self.output_text.insertPlainText(message)
+        self.output_text.moveCursor(self.output_text.textCursor().End)
+
+    def run_setup(self):
+        """Run the batch setup process"""
+        base_folder = self.base_folder_entry.text()
+        csv_file = self.csv_file_entry.text()
+
+        # Validate inputs
+        if not base_folder:
+            QMessageBox.critical(self, "Error", "Please select a base folder!")
+            return
+
+        if not csv_file:
+            QMessageBox.critical(self, "Error", "Please select a CSV file!")
+            return
+
+        # Disable run button
+        self.run_button.setEnabled(False)
+        self.run_button.setText("Running...")
+        self.output_text.clear()
+
+        # Create and start worker thread
+        self.worker_thread = WorkerThread(base_folder, csv_file)
+        self.worker_thread.output_signal.connect(self.log_output)
+        self.worker_thread.finished_signal.connect(self.on_setup_finished)
+        self.worker_thread.start()
+
+    def on_setup_finished(self, success, message):
+        """Handle completion of setup process"""
+        # Re-enable run button
+        self.run_button.setEnabled(True)
+        self.run_button.setText("Run Batch Setup")
+
+        # Show result message
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            if "warning" in message.lower():
+                QMessageBox.warning(self, "Warning", message)
+            else:
+                QMessageBox.critical(self, "Error", message)
 
 
 def main():
     """
     Main function to run the DOE batch setup with GUI
     """
-    root = tk.Tk()
-    app = DOEBatchGUI(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    window = DOEBatchGUI()
+    window.show()
+    sys.exit(app.exec_())
 
 
 if __name__ == "__main__":
