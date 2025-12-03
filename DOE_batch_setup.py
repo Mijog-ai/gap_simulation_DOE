@@ -380,8 +380,15 @@ class DOEBatchSetup:
 
                     print(f"      📂 Copied {t_folder.name} folder")
 
-                    # Copy and modify geometry.txt into the T* folder
-                    geometry_dest = dest_t_folder / 'geometry.txt'
+                    # Copy and modify geometry.txt into the T*/input folder
+                    input_folder = dest_t_folder / 'input'
+
+                    # Ensure input folder exists
+                    if not input_folder.exists():
+                        input_folder.mkdir(parents=True, exist_ok=True)
+                        print(f"         📁 Created input folder in {t_folder.name}")
+
+                    geometry_dest = input_folder / 'geometry.txt'
 
                     # Read the base geometry.txt
                     with open(self.geometry_file, 'r') as f:
@@ -417,7 +424,7 @@ class DOEBatchSetup:
                     with open(geometry_dest, 'w') as f:
                         f.write(geometry_content)
 
-                    print(f"         ✓ Created geometry.txt with scaled values:")
+                    print(f"         ✓ Created geometry.txt in input folder with scaled values:")
                     print(f"            lK  = {scaled_lk:.6f}")
                     print(f"            lZ0 = {scaled_lZ0:.6f}")
                     print(f"            lKG = {scaled_lKG:.6f}")
