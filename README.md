@@ -156,14 +156,61 @@ Based on your geometry.txt file, the script successfully extracted:
 | lKG       | 80.753     | Length of Piston Gap surface |
 | lSK       | 32.595     | Distance to Center of Mass |
 
+## Step 3: Piston Scaling Runner
+
+After creating the IM_scaled_piston folders using the DOE_batch_setup.py script, use the `run_piston_scaling.py` script to:
+
+1. Copy `piston_pr.inp` from `basefolder/INP/` to each `IM_piston` folder
+2. Run `Z_MeshScaler.py` for each scaled folder using the `scalar.txt` file
+
+### Usage
+
+```bash
+# Run both copy and scaling operations
+python3 run_piston_scaling.py /path/to/base_folder
+
+# Only copy piston_pr.inp files (no scaling)
+python3 run_piston_scaling.py /path/to/base_folder --copy-only
+
+# Only run Z_MeshScaler.py (no copying)
+python3 run_piston_scaling.py /path/to/base_folder --scale-only
+```
+
+### What it does
+
+1. **Verification**: Checks that all required files and folders exist
+2. **Step 1 - Copy Files**: Copies `piston_pr.inp` to each `IM_scaled_piston_*/IM_piston/` folder
+3. **Step 2 - Run Scaling**: Executes `Z_MeshScaler.py` with each folder's `scalar.txt` file
+
+### Expected Folder Structure
+
+```
+base_folder/
+├── INP/
+│   └── piston_pr.inp
+└── simulation/
+    ├── IM_scaled_piston_5/
+    │   ├── IM_piston/
+    │   │   └── piston_pr.inp (copied here)
+    │   ├── scalar.txt
+    │   ├── T60_2000rpm_350bar_100d/
+    │   └── T60_2850rpm_50bar_100d/
+    ├── IM_scaled_piston_10/
+    │   ├── IM_piston/
+    │   │   └── piston_pr.inp (copied here)
+    │   ├── scalar.txt
+    │   └── ...
+    └── ...
+```
+
 ## Next Steps
 
-After completing Step 0 and Step 1, you can:
+After completing all steps, you can:
 
-1. **Extend the script** to include additional steps for your DOE workflow
-2. **Batch process** multiple simulation folders
-3. **Modify parameters** based on extracted geometry values
-4. **Generate input files** for simulation runs
+1. **Verify scaled meshes** in each IM_piston folder
+2. **Run simulations** for each scaled configuration
+3. **Analyze results** across different scale values
+4. **Post-process** simulation outputs
 
 ## Requirements
 
