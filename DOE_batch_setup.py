@@ -586,15 +586,108 @@ class PistonScalingRunner:
 
         return copied_folders
 
+    def scale_z_mesh(self, scalar_config_file):
+        """
+        Scale Z-coordinates in mesh based on configuration file
+        This is the integrated Z_MeshScaler functionality
+
+        Args:
+            scalar_config_file: Path to the scalar.txt configuration file
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Read the configuration file
+            with open(scalar_config_file, 'r') as f:
+                lines = f.readlines()
+
+            if len(lines) < 4:
+                print(f"   ✗ Error: scalar.txt must have at least 4 lines")
+                return False
+
+            original_inp = lines[0].strip()
+            new_inp = lines[1].strip()
+            z1, z1new = map(float, lines[2].strip().split())
+            z2, z2new = map(float, lines[3].strip().split())
+
+            # If paths are relative, resolve them relative to the scalar config file directory
+            config_dir = Path(scalar_config_file).parent
+            original_inp_path = config_dir / original_inp if not Path(original_inp).is_absolute() else Path(original_inp)
+            new_inp_path = config_dir / new_inp if not Path(new_inp).is_absolute() else Path(new_inp)
+
+            # Check if original input file exists
+            if not original_inp_path.exists():
+                print(f"   ✗ Error: Original .inp file not found: {original_inp_path}")
+                return False
+
+            # Read the original Abaqus input file
+            with open(original_inp_path, 'r') as f:
+                original_lines = f.readlines()
+
+            # Write to the new scaled Abaqus input file
+            with open(new_inp_path, 'w') as f:
+                in_node_section = False
+                for line in original_lines:
+                    stripped_line = line.strip()
+                    if stripped_line.startswith('*NODE'):
+                        f.write(line)
+                        in_node_section = True
+                        continue
+                    if in_node_section and stripped_line.startswith('*'):
+                        in_node_section = False
+                    if in_node_section and stripped_line:
+                        # Parse node line: assuming format "node_id, x, y, z"
+                        parts = [p.strip() for p in stripped_line.split(',')]
+                        if len(parts) != 4:
+                            # If not a valid node line, write it unchanged
+                            f.write(line)
+                            continue
+                        node_id = parts[0]
+                        try:
+                            x = float(parts[1])
+                            y = float(parts[2])
+                            z = float(parts[3])
+                        except ValueError:
+                            # If parsing fails, write original line
+                            f.write(line)
+                            continue
+
+                        # Scale Z-coordinate
+                        if z <= z1:
+                            new_z = z  # No change for Z <= Z1
+                        elif z <= z2:
+                            if z2 - z1 == 0:
+                                new_z = z1new  # Avoid division by zero
+                            else:
+                                # Linear interpolation: new_z = z1new + (z - z1) * (z2new - z1new) / (z2 - z1)
+                                new_z = z1new + (z - z1) * (z2new - z1new) / (z2 - z1)
+                        else:
+                            # Apply offset for Z > Z2
+                            new_z = z + (z2new - z2)
+
+                        # Write the scaled node with formatting similar to Abaqus style
+                        f.write(f"{node_id:10}, {x:20.13E}, {y:20.13E}, {new_z:20.13E}\n")
+                        continue
+                    f.write(line)
+
+            return True
+
+        except Exception as e:
+            print(f"   ✗ Error during Z-scaling: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
     def run_z_scaler(self):
         """
-        Run Z_MeshScaler.py for each IM_scaled_piston folder
+        Run Z mesh scaling for each IM_scaled_piston folder
 
         Returns:
             dict: Dictionary with folder names and their execution status
         """
         print("=" * 70)
-        print("STEP 2: RUNNING Z_MeshScaler.py FOR EACH FOLDER")
+        print("STEP 2: RUNNING Z MESH SCALING FOR EACH FOLDER")
         print("=" * 70)
 
         # Find all IM_scaled_piston folders
@@ -607,11 +700,6 @@ class PistonScalingRunner:
         print(f"\nProcessing {len(scaled_folders)} folders\n")
 
         results = {}
-        script_path = self.base_folder / 'Z_MeshScaler.py'
-
-        if not script_path.exists():
-            print(f"✗ Z_MeshScaler.py NOT found at: {script_path}")
-            return {}
 
         for scaled_folder in scaled_folders:
             folder_name = scaled_folder.name
@@ -627,29 +715,16 @@ class PistonScalingRunner:
             print(f"   Scalar file: {scalar_file}")
 
             try:
-                # Run Z_MeshScaler.py with the scalar.txt file
-                result = subprocess.run(
-                    [sys.executable, str(script_path), str(scalar_file)],
-                    cwd=str(scaled_folder),
-                    capture_output=True,
-                    text=True,
-                    timeout=300  # 5 minute timeout
-                )
+                # Run integrated Z mesh scaler
+                success = self.scale_z_mesh(str(scalar_file))
 
-                if result.returncode == 0:
-                    print(f"   ✓ Successfully processed")
-                    if result.stdout:
-                        print(f"   Output: {result.stdout.strip()}")
+                if success:
+                    print(f"   ✓ Successfully processed and scaled mesh")
                     results[folder_name] = 'success'
                 else:
-                    print(f"   ✗ Error (return code: {result.returncode})")
-                    if result.stderr:
-                        print(f"   Error: {result.stderr.strip()}")
-                    results[folder_name] = f'failed - {result.returncode}'
+                    print(f"   ✗ Failed to scale mesh")
+                    results[folder_name] = 'failed'
 
-            except subprocess.TimeoutExpired:
-                print(f"   ✗ Timeout (exceeded 5 minutes)")
-                results[folder_name] = 'timeout'
             except Exception as e:
                 print(f"   ✗ Exception: {e}")
                 results[folder_name] = f'error - {str(e)}'
@@ -1015,7 +1090,7 @@ class DOEBatchGUI(QMainWindow):
         piston_button_layout.addWidget(self.copy_only_button)
 
         # Scale Only button
-        self.scale_only_button = QPushButton("Run Z_MeshScaler Only")
+        self.scale_only_button = QPushButton("Run Z Mesh Scaling Only")
         self.scale_only_button.setFont(QFont("Arial", 10))
         self.scale_only_button.setStyleSheet("""
             QPushButton {
@@ -1185,7 +1260,7 @@ class DOEBatchGUI(QMainWindow):
 
         # Reset button texts
         self.copy_only_button.setText("Copy piston_pr.inp Files")
-        self.scale_only_button.setText("Run Z_MeshScaler Only")
+        self.scale_only_button.setText("Run Z Mesh Scaling Only")
         self.run_both_button.setText("Copy & Scale (Both)")
 
         # Show result message
