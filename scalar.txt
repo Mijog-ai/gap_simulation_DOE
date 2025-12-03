@@ -1,0 +1,4 @@
+./piston_IM.inp
+./piston_IM_scaled.inp
+0.5 0.5
+64 65
