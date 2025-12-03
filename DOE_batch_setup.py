@@ -276,6 +276,84 @@ class DOEBatchSetup:
             print(f"✗ Error reading CSV file: {e}")
             return None
 
+    def step2_create_scaled_piston_folders(self, lk_scale_values, base_lk_value):
+        """
+        Step 2: Create IM_Scaled_piston folders and scalar.txt files
+
+        Args:
+            lk_scale_values: List of LK scale values from CSV
+            base_lk_value: Base LK value from geometry.txt
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        print("=" * 70)
+        print("STEP 2: CREATING IM_Scaled_piston FOLDERS")
+        print("=" * 70)
+
+        try:
+            simulation_folder = self.required_folders['simulation']
+            zscalar_folder = self.required_folders['Zscalar']
+            scalar_template_path = zscalar_folder / 'scalar.txt'
+
+            # Check if scalar.txt exists in Zscalar folder
+            if not scalar_template_path.exists():
+                print(f"✗ scalar.txt not found in Zscalar folder: {scalar_template_path}")
+                return False
+
+            print(f"\n📖 Reading scalar template from: {scalar_template_path}")
+
+            # Read the scalar.txt template
+            with open(scalar_template_path, 'r') as f:
+                scalar_lines = f.readlines()
+
+            if len(scalar_lines) < 4:
+                print(f"✗ scalar.txt does not have expected format (needs at least 4 lines)")
+                return False
+
+            print(f"\n✓ Base LK value: {base_lk_value}")
+            print(f"✓ Creating folders for {len(lk_scale_values)} scale values\n")
+
+            created_folders = []
+
+            # Create folders for each LK scale value
+            for scale_value in lk_scale_values:
+                # Create folder name
+                folder_name = f"IM_Scaled_piston_{int(scale_value)}"
+                folder_path = simulation_folder / folder_name
+
+                # Create folder
+                folder_path.mkdir(parents=True, exist_ok=True)
+                print(f"   📁 Created folder: {folder_name}")
+
+                # Calculate scaled LK value
+                scaled_lk_value = base_lk_value + scale_value
+
+                # Create modified scalar.txt content
+                # Replace line 4 (index 3) with base_lk and scaled_lk values
+                modified_scalar = scalar_lines.copy()
+                modified_scalar[3] = f"{base_lk_value} {scaled_lk_value}\n"
+
+                # Write scalar.txt to the folder
+                scalar_output_path = folder_path / 'scalar.txt'
+                with open(scalar_output_path, 'w') as f:
+                    f.writelines(modified_scalar)
+
+                print(f"      ✓ Created scalar.txt with values: {base_lk_value} {scaled_lk_value}")
+                created_folders.append(folder_name)
+
+            print("\n" + "=" * 70)
+            print(f"✓ Successfully created {len(created_folders)} folders:")
+            for folder in created_folders:
+                print(f"   - {folder}")
+            print("=" * 70 + "\n")
+
+            return True
+
+        except Exception as e:
+            print(f"✗ Error creating folders: {e}")
+            return False
+
 
 class WorkerThread(QThread):
     """Worker thread for running batch setup without blocking GUI"""
@@ -342,22 +420,33 @@ class WorkerThread(QThread):
             # Execute Step 1
             geometry_values = setup.step1_extract_geometry_values()
 
+            # Execute Step 2 - Create IM_Scaled_piston folders
+            step2_success = False
+            if geometry_values and lk_values:
+                base_lk = geometry_values.get('lK')
+                if base_lk is not None:
+                    step2_success = setup.step2_create_scaled_piston_folders(lk_values, base_lk)
+                else:
+                    print("✗ Could not find base lK value in geometry data")
+
             # Summary
             print("=" * 70)
             print("SETUP SUMMARY")
             print("=" * 70)
-            print(f"Step 0 (Copy piston_pr.inp): {'✓ SUCCESS' if step0_success else '✗ FAILED'}")
-            print(f"Step 1 (Extract geometry):   {'✓ SUCCESS' if geometry_values else '✗ FAILED'}")
-            print(f"CSV lK_scale_values read:    ✓ SUCCESS ({len(lk_values)} values)")
+            print(f"Step 0 (Copy piston_pr.inp):       {'✓ SUCCESS' if step0_success else '✗ FAILED'}")
+            print(f"Step 1 (Extract geometry):         {'✓ SUCCESS' if geometry_values else '✗ FAILED'}")
+            print(f"Step 2 (Create scaled folders):    {'✓ SUCCESS' if step2_success else '✗ FAILED'}")
+            print(f"CSV lK_scale_values read:          ✓ SUCCESS ({len(lk_values)} values)")
             print("=" * 70)
 
-            if geometry_values and lk_values:
+            if geometry_values and lk_values and step2_success:
                 print("\n✓ Setup complete! You can now proceed with the next steps.")
                 print(f"\nExtracted geometry values:")
                 for key, val in geometry_values.items():
                     print(f"  {key}: {val}")
                 print(f"\nlK_scale_values from CSV: {lk_values}")
-                self.finished_signal.emit(True, f"Batch setup completed successfully!\n{len(lk_values)} lK_scale_values loaded.")
+                print(f"\n✓ Created {len(lk_values)} IM_Scaled_piston folders in simulation directory")
+                self.finished_signal.emit(True, f"Batch setup completed successfully!\n{len(lk_values)} folders created with scalar.txt files.")
             else:
                 print("\n⚠ Setup completed with warnings. Please check the errors above.")
                 self.finished_signal.emit(False, "Setup completed with warnings. Check the output log.")
