@@ -12,17 +12,19 @@ from pathlib import Path
 
 
 class PistonScalingRunner:
-    def __init__(self, base_folder):
+    def __init__(self, base_folder, scaler_script_path=None):
         """
         Initialize the Piston Scaling Runner
 
         Args:
             base_folder: Path to the base folder containing all simulation files
+            scaler_script_path: Optional path to Z_MeshScaler.py script
         """
         self.base_folder = Path(base_folder)
         self.inp_folder = self.base_folder / 'INP'
         self.simulation_folder = self.base_folder / 'simulation'
         self.piston_pr_source = self.inp_folder / 'piston_pr.inp'
+        self.scaler_script_path = scaler_script_path
 
     def verify_files(self):
         """
@@ -115,6 +117,34 @@ class PistonScalingRunner:
 
         return copied_folders
 
+    def find_scaler_script(self):
+        """
+        Find Z_MeshScaler.py in multiple locations
+
+        Returns:
+            Path: Path to Z_MeshScaler.py if found, None otherwise
+        """
+        # If path was explicitly provided, use it
+        if self.scaler_script_path:
+            script_path = Path(self.scaler_script_path)
+            if script_path.exists():
+                return script_path
+            else:
+                return None
+
+        # Search in multiple locations
+        search_locations = [
+            Path(__file__).parent / 'Z_MeshScaler.py',  # Same directory as this script
+            self.base_folder / 'Z_MeshScaler.py',        # Base folder
+            Path.cwd() / 'Z_MeshScaler.py',              # Current working directory
+        ]
+
+        for location in search_locations:
+            if location.exists():
+                return location
+
+        return None
+
     def run_z_scaler(self):
         """
         Run Z_MeshScaler.py for each IM_scaled_piston folder
@@ -136,11 +166,22 @@ class PistonScalingRunner:
         print(f"\nProcessing {len(scaled_folders)} folders\n")
 
         results = {}
-        script_path = Path(__file__).parent / 'Z_MeshScaler.py'
+        script_path = self.find_scaler_script()
 
-        if not script_path.exists():
-            print(f"✗ Z_MeshScaler.py NOT found at: {script_path}")
+        if not script_path:
+            print(f"✗ Z_MeshScaler.py NOT found!")
+            print(f"\nSearched in the following locations:")
+            print(f"  1. Script directory: {Path(__file__).parent}")
+            print(f"  2. Base folder: {self.base_folder}")
+            print(f"  3. Current directory: {Path.cwd()}")
+            print(f"\n💡 Solutions:")
+            print(f"  • Copy Z_MeshScaler.py to one of the above locations")
+            print(f"  • Use --scaler-script argument to specify the path:")
+            print(f"    python run_piston_scaling.py <base_folder> --scaler-script <path_to_Z_MeshScaler.py>")
+            print("\n⚠ No folders were processed.")
             return {}
+
+        print(f"✓ Found Z_MeshScaler.py at: {script_path}\n")
 
         for scaled_folder in scaled_folders:
             folder_name = scaled_folder.name
@@ -221,6 +262,10 @@ def main():
         action='store_true',
         help='Only run Z_MeshScaler.py, do not copy files'
     )
+    parser.add_argument(
+        '--scaler-script',
+        help='Path to Z_MeshScaler.py script (searches in script dir, base folder, and current dir if not specified)'
+    )
 
     args = parser.parse_args()
 
@@ -231,7 +276,7 @@ def main():
     print("\n")
 
     # Initialize runner
-    runner = PistonScalingRunner(args.base_folder)
+    runner = PistonScalingRunner(args.base_folder, args.scaler_script)
 
     # Verify files
     if not runner.verify_files():
