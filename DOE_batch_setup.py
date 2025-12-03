@@ -184,7 +184,7 @@ class DOEBatchSetup:
             
             print(f"\n📖 Reading file: {self.geometry_file}")
             
-            with open(self.geometry_file, 'r') as f:
+            with open(self.geometry_file, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
             
             # Extract values using regex
@@ -252,7 +252,7 @@ class DOEBatchSetup:
             print(f"\n📖 Reading file: {csv_path}")
 
             lk_values = []
-            with open(csv_path, 'r') as f:
+            with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
                 reader = csv.reader(f)
                 header = next(reader, None)  # Skip header
 
@@ -314,7 +314,7 @@ class DOEBatchSetup:
             print(f"\n📖 Reading scalar template from: {scalar_template_path}")
 
             # Read the scalar.txt template
-            with open(scalar_template_path, 'r') as f:
+            with open(scalar_template_path, 'r', encoding='utf-8', errors='replace') as f:
                 scalar_lines = f.readlines()
 
             if len(scalar_lines) < 4:
@@ -370,7 +370,7 @@ class DOEBatchSetup:
 
                 # Write scalar.txt to the folder
                 scalar_output_path = folder_path / 'scalar.txt'
-                with open(scalar_output_path, 'w') as f:
+                with open(scalar_output_path, 'w', encoding='utf-8') as f:
                     f.writelines(modified_scalar)
 
                 print(f"      ✓ Created scalar.txt with values: {base_lk} {scaled_lk}")
@@ -397,7 +397,7 @@ class DOEBatchSetup:
                     geometry_dest = input_folder / 'geometry.txt'
 
                     # Read the base geometry.txt
-                    with open(self.geometry_file, 'r') as f:
+                    with open(self.geometry_file, 'r', encoding='utf-8', errors='replace') as f:
                         geometry_content = f.read()
 
                     # Update the geometry values using regex
@@ -427,7 +427,7 @@ class DOEBatchSetup:
                     )
 
                     # Write modified geometry.txt
-                    with open(geometry_dest, 'w') as f:
+                    with open(geometry_dest, 'w', encoding='utf-8') as f:
                         f.write(geometry_content)
 
                     print(f"         ✓ Created geometry.txt in input folder with scaled values:")
@@ -441,7 +441,8 @@ class DOEBatchSetup:
 
                     if options_piston_file.exists():
                         # Read the options_piston.txt file
-                        with open(options_piston_file, 'r') as f:
+                        # Use latin-1 encoding to preserve all bytes without decoding errors
+                        with open(options_piston_file, 'r', encoding='latin-1') as f:
                             options_content = f.read()
 
                         # Replace the IM_piston_path line with the actual path
@@ -454,7 +455,7 @@ class DOEBatchSetup:
                         )
 
                         # Write the updated content back
-                        with open(options_piston_file, 'w') as f:
+                        with open(options_piston_file, 'w', encoding='latin-1') as f:
                             f.write(options_content)
 
                         print(f"         ✓ Updated options_piston.txt with IM_piston_path:")
