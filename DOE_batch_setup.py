@@ -11,9 +11,10 @@ import csv
 from pathlib import Path
 import threading
 import sys
+import subprocess
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
-                             QTextEdit, QFileDialog, QMessageBox, QFrame)
+                             QTextEdit, QFileDialog, QMessageBox, QFrame, QGroupBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor
 
@@ -480,6 +481,194 @@ class DOEBatchSetup:
             return False
 
 
+class PistonScalingRunner:
+    """Runner for piston scaling operations"""
+    def __init__(self, base_folder):
+        """
+        Initialize the Piston Scaling Runner
+
+        Args:
+            base_folder: Path to the base folder containing all simulation files
+        """
+        self.base_folder = Path(base_folder)
+        self.inp_folder = self.base_folder / 'INP'
+        self.simulation_folder = self.base_folder / 'simulation'
+        self.piston_pr_source = self.inp_folder / 'piston_pr.inp'
+
+    def verify_files(self):
+        """
+        Verify that required files and folders exist
+
+        Returns:
+            bool: True if all required files exist, False otherwise
+        """
+        print("=" * 70)
+        print("VERIFYING FILES AND FOLDERS")
+        print("=" * 70)
+
+        # Check base folder
+        if not self.base_folder.exists():
+            print(f"✗ Base folder NOT found: {self.base_folder}")
+            return False
+        print(f"✓ Base folder exists: {self.base_folder}")
+
+        # Check INP folder
+        if not self.inp_folder.exists():
+            print(f"✗ INP folder NOT found: {self.inp_folder}")
+            return False
+        print(f"✓ INP folder exists: {self.inp_folder}")
+
+        # Check piston_pr.inp
+        if not self.piston_pr_source.exists():
+            print(f"✗ piston_pr.inp NOT found: {self.piston_pr_source}")
+            return False
+        print(f"✓ piston_pr.inp exists: {self.piston_pr_source}")
+
+        # Check simulation folder
+        if not self.simulation_folder.exists():
+            print(f"✗ simulation folder NOT found: {self.simulation_folder}")
+            return False
+        print(f"✓ simulation folder exists: {self.simulation_folder}")
+
+        # Find IM_scaled_piston folders
+        scaled_folders = list(self.simulation_folder.glob('IM_scaled_piston_*'))
+        if not scaled_folders:
+            print(f"✗ No IM_scaled_piston_* folders found in: {self.simulation_folder}")
+            return False
+        print(f"✓ Found {len(scaled_folders)} IM_scaled_piston_* folders")
+
+        print("=" * 70 + "\n")
+        return True
+
+    def copy_piston_pr_files(self):
+        """
+        Copy piston_pr.inp from INP folder to each IM_piston folder
+
+        Returns:
+            list: List of IM_piston folders where files were copied
+        """
+        print("=" * 70)
+        print("STEP 1: COPYING piston_pr.inp TO IM_piston FOLDERS")
+        print("=" * 70)
+
+        # Find all IM_scaled_piston folders
+        scaled_folders = sorted(self.simulation_folder.glob('IM_scaled_piston_*'))
+
+        if not scaled_folders:
+            print("✗ No IM_scaled_piston_* folders found!")
+            return []
+
+        print(f"\nFound {len(scaled_folders)} IM_scaled_piston folders\n")
+
+        copied_folders = []
+
+        for scaled_folder in scaled_folders:
+            # Find IM_piston folder inside
+            im_piston_folder = scaled_folder / 'IM_piston'
+
+            if not im_piston_folder.exists():
+                print(f"⚠ IM_piston folder NOT found in: {scaled_folder.name}")
+                print(f"  Creating IM_piston folder...")
+                im_piston_folder.mkdir(parents=True, exist_ok=True)
+
+            # Copy piston_pr.inp to IM_piston folder
+            dest_file = im_piston_folder / 'piston_pr.inp'
+
+            try:
+                shutil.copy2(self.piston_pr_source, dest_file)
+                print(f"✓ Copied to: {scaled_folder.name}/IM_piston/")
+                copied_folders.append(im_piston_folder)
+            except Exception as e:
+                print(f"✗ Error copying to {scaled_folder.name}/IM_piston/: {e}")
+
+        print(f"\n✓ Successfully copied piston_pr.inp to {len(copied_folders)} folders")
+        print("=" * 70 + "\n")
+
+        return copied_folders
+
+    def run_z_scaler(self):
+        """
+        Run Z_MeshScaler.py for each IM_scaled_piston folder
+
+        Returns:
+            dict: Dictionary with folder names and their execution status
+        """
+        print("=" * 70)
+        print("STEP 2: RUNNING Z_MeshScaler.py FOR EACH FOLDER")
+        print("=" * 70)
+
+        # Find all IM_scaled_piston folders
+        scaled_folders = sorted(self.simulation_folder.glob('IM_scaled_piston_*'))
+
+        if not scaled_folders:
+            print("✗ No IM_scaled_piston_* folders found!")
+            return {}
+
+        print(f"\nProcessing {len(scaled_folders)} folders\n")
+
+        results = {}
+        script_path = self.base_folder / 'Z_MeshScaler.py'
+
+        if not script_path.exists():
+            print(f"✗ Z_MeshScaler.py NOT found at: {script_path}")
+            return {}
+
+        for scaled_folder in scaled_folders:
+            folder_name = scaled_folder.name
+            scalar_file = scaled_folder / 'scalar.txt'
+
+            # Check if scalar.txt exists
+            if not scalar_file.exists():
+                print(f"⚠ {folder_name}: scalar.txt NOT found, skipping...")
+                results[folder_name] = 'skipped - no scalar.txt'
+                continue
+
+            print(f"📂 Processing: {folder_name}")
+            print(f"   Scalar file: {scalar_file}")
+
+            try:
+                # Run Z_MeshScaler.py with the scalar.txt file
+                result = subprocess.run(
+                    [sys.executable, str(script_path), str(scalar_file)],
+                    cwd=str(scaled_folder),
+                    capture_output=True,
+                    text=True,
+                    timeout=300  # 5 minute timeout
+                )
+
+                if result.returncode == 0:
+                    print(f"   ✓ Successfully processed")
+                    if result.stdout:
+                        print(f"   Output: {result.stdout.strip()}")
+                    results[folder_name] = 'success'
+                else:
+                    print(f"   ✗ Error (return code: {result.returncode})")
+                    if result.stderr:
+                        print(f"   Error: {result.stderr.strip()}")
+                    results[folder_name] = f'failed - {result.returncode}'
+
+            except subprocess.TimeoutExpired:
+                print(f"   ✗ Timeout (exceeded 5 minutes)")
+                results[folder_name] = 'timeout'
+            except Exception as e:
+                print(f"   ✗ Exception: {e}")
+                results[folder_name] = f'error - {str(e)}'
+
+            print()
+
+        # Summary
+        print("=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        success_count = sum(1 for v in results.values() if v == 'success')
+        print(f"Total folders: {len(results)}")
+        print(f"Successful:    {success_count}")
+        print(f"Failed:        {len(results) - success_count}")
+        print("=" * 70 + "\n")
+
+        return results
+
+
 class WorkerThread(QThread):
     """Worker thread for running batch setup without blocking GUI"""
     output_signal = pyqtSignal(str)
@@ -587,6 +776,96 @@ class WorkerThread(QThread):
             builtins.print = original_print
 
 
+class PistonScalingWorker(QThread):
+    """Worker thread for piston scaling operations"""
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+
+    def __init__(self, base_folder, operation='both'):
+        super().__init__()
+        self.base_folder = base_folder
+        self.operation = operation  # 'copy', 'scale', or 'both'
+
+    def run(self):
+        """Execute the piston scaling process"""
+        try:
+            # Redirect print statements to GUI
+            from io import StringIO
+            import builtins
+
+            # Custom print function that emits to GUI
+            original_print = print
+            def gui_print(*args, **kwargs):
+                output = StringIO()
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('file', None)
+                original_print(*args, file=output, **kwargs_copy)
+                message = output.getvalue()
+                self.output_signal.emit(message)
+                original_print(*args, **kwargs)
+
+            # Replace built-in print
+            builtins.print = gui_print
+
+            # Initialize runner
+            print("\n")
+            print("╔" + "═" * 68 + "╗")
+            print("║" + " " * 18 + "PISTON SCALING RUNNER" + " " * 29 + "║")
+            print("╚" + "═" * 68 + "╝")
+            print("\n")
+
+            runner = PistonScalingRunner(self.base_folder)
+
+            # Verify files
+            if not runner.verify_files():
+                print("✗ Verification failed. Please check the errors above.")
+                self.finished_signal.emit(False, "Verification failed. Check the output log.")
+                builtins.print = original_print
+                return
+
+            # Execute operations based on selected mode
+            copied_folders = []
+            results = {}
+
+            if self.operation in ['copy', 'both']:
+                copied_folders = runner.copy_piston_pr_files()
+                if not copied_folders and self.operation == 'copy':
+                    print("⚠ No files were copied.")
+                    self.finished_signal.emit(False, "No files were copied. Check the output log.")
+                    builtins.print = original_print
+                    return
+
+            if self.operation in ['scale', 'both']:
+                results = runner.run_z_scaler()
+
+                if not results:
+                    print("⚠ No folders were processed.")
+                    self.finished_signal.emit(False, "No folders were processed. Check the output log.")
+                    builtins.print = original_print
+                    return
+
+                # Check results
+                success_count = sum(1 for v in results.values() if v == 'success')
+                if all(v == 'success' for v in results.values()):
+                    print("✓ All folders processed successfully!")
+                    self.finished_signal.emit(True, f"Piston scaling completed successfully!\n{success_count} folders processed.")
+                else:
+                    print("⚠ Some folders failed to process. Check the summary above.")
+                    self.finished_signal.emit(False, f"Some folders failed.\n{success_count}/{len(results)} successful.")
+            elif self.operation == 'copy':
+                print("✓ Copy operation completed successfully!")
+                self.finished_signal.emit(True, f"Copied piston_pr.inp to {len(copied_folders)} folders.")
+
+            # Restore original print
+            builtins.print = original_print
+
+        except Exception as e:
+            self.output_signal.emit(f"\n✗ Error during piston scaling: {e}\n")
+            self.finished_signal.emit(False, f"An error occurred: {e}")
+            import builtins
+            builtins.print = original_print
+
+
 class DOEBatchGUI(QMainWindow):
     """
     GUI for DOE Batch Setup using PyQt5
@@ -600,6 +879,7 @@ class DOEBatchGUI(QMainWindow):
         self.base_folder_path = ""
         self.csv_file_path = ""
         self.worker_thread = None
+        self.piston_scaling_worker = None
 
         # Create GUI elements
         self.create_widgets()
@@ -700,6 +980,83 @@ class DOEBatchGUI(QMainWindow):
 
         main_layout.addWidget(button_widget)
 
+        # Piston Scaling Section
+        piston_scaling_group = QGroupBox("Piston Scaling Operations")
+        piston_scaling_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
+        piston_layout = QVBoxLayout()
+        piston_scaling_group.setLayout(piston_layout)
+
+        # Info label
+        info_label = QLabel("Run piston scaling operations on IM_scaled_piston folders:")
+        info_label.setWordWrap(True)
+        piston_layout.addWidget(info_label)
+
+        # Button layout
+        piston_button_layout = QHBoxLayout()
+
+        # Copy Only button
+        self.copy_only_button = QPushButton("Copy piston_pr.inp Files")
+        self.copy_only_button.setFont(QFont("Arial", 10))
+        self.copy_only_button.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.copy_only_button.clicked.connect(lambda: self.run_piston_scaling('copy'))
+        piston_button_layout.addWidget(self.copy_only_button)
+
+        # Scale Only button
+        self.scale_only_button = QPushButton("Run Z_MeshScaler Only")
+        self.scale_only_button.setFont(QFont("Arial", 10))
+        self.scale_only_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e67e22;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #d35400;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.scale_only_button.clicked.connect(lambda: self.run_piston_scaling('scale'))
+        piston_button_layout.addWidget(self.scale_only_button)
+
+        # Both operations button
+        self.run_both_button = QPushButton("Copy & Scale (Both)")
+        self.run_both_button.setFont(QFont("Arial", 10))
+        self.run_both_button.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                padding: 10px 20px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.run_both_button.clicked.connect(lambda: self.run_piston_scaling('both'))
+        piston_button_layout.addWidget(self.run_both_button)
+
+        piston_layout.addLayout(piston_button_layout)
+        main_layout.addWidget(piston_scaling_group)
+
         # Output Text Area
         output_widget = QWidget()
         output_widget.setContentsMargins(20, 10, 20, 20)
@@ -779,6 +1136,57 @@ class DOEBatchGUI(QMainWindow):
         # Re-enable run button
         self.run_button.setEnabled(True)
         self.run_button.setText("Run Batch Setup")
+
+        # Show result message
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            if "warning" in message.lower():
+                QMessageBox.warning(self, "Warning", message)
+            else:
+                QMessageBox.critical(self, "Error", message)
+
+    def run_piston_scaling(self, operation):
+        """Run piston scaling operations"""
+        base_folder = self.base_folder_entry.text()
+
+        # Validate input
+        if not base_folder:
+            QMessageBox.critical(self, "Error", "Please select a base folder first!")
+            return
+
+        # Disable buttons
+        self.copy_only_button.setEnabled(False)
+        self.scale_only_button.setEnabled(False)
+        self.run_both_button.setEnabled(False)
+
+        # Update button text based on operation
+        if operation == 'copy':
+            self.copy_only_button.setText("Running...")
+        elif operation == 'scale':
+            self.scale_only_button.setText("Running...")
+        else:
+            self.run_both_button.setText("Running...")
+
+        self.output_text.clear()
+
+        # Create and start worker thread
+        self.piston_scaling_worker = PistonScalingWorker(base_folder, operation)
+        self.piston_scaling_worker.output_signal.connect(self.log_output)
+        self.piston_scaling_worker.finished_signal.connect(self.on_piston_scaling_finished)
+        self.piston_scaling_worker.start()
+
+    def on_piston_scaling_finished(self, success, message):
+        """Handle completion of piston scaling process"""
+        # Re-enable buttons
+        self.copy_only_button.setEnabled(True)
+        self.scale_only_button.setEnabled(True)
+        self.run_both_button.setEnabled(True)
+
+        # Reset button texts
+        self.copy_only_button.setText("Copy piston_pr.inp Files")
+        self.scale_only_button.setText("Run Z_MeshScaler Only")
+        self.run_both_button.setText("Copy & Scale (Both)")
 
         # Show result message
         if success:
