@@ -390,25 +390,25 @@ class DOEBatchSetup:
                     # Update the geometry values using regex
                     geometry_content = re.sub(
                         r'(^\s*lK\s+)[-+]?\d*\.?\d+',
-                        f'\\1{scaled_lk}',
+                        lambda m: f'{m.group(1)}{scaled_lk}',
                         geometry_content,
                         flags=re.MULTILINE
                     )
                     geometry_content = re.sub(
                         r'(^\s*lZ0\s+)[-+]?\d*\.?\d+',
-                        f'\\1{scaled_lZ0}',
+                        lambda m: f'{m.group(1)}{scaled_lZ0}',
                         geometry_content,
                         flags=re.MULTILINE
                     )
                     geometry_content = re.sub(
                         r'(^\s*lKG\s+)[-+]?\d*\.?\d+',
-                        f'\\1{scaled_lKG}',
+                        lambda m: f'{m.group(1)}{scaled_lKG}',
                         geometry_content,
                         flags=re.MULTILINE
                     )
                     geometry_content = re.sub(
                         r'(^\s*lSK\s+)[-+]?\d*\.?\d+',
-                        f'\\1{scaled_lSK}',
+                        lambda m: f'{m.group(1)}{scaled_lSK}',
                         geometry_content,
                         flags=re.MULTILINE
                     )
@@ -461,7 +461,10 @@ class WorkerThread(QThread):
             original_print = print
             def gui_print(*args, **kwargs):
                 output = StringIO()
-                original_print(*args, file=output, **kwargs)
+                # Remove 'file' from kwargs to avoid duplicate argument error
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('file', None)
+                original_print(*args, file=output, **kwargs_copy)
                 message = output.getvalue()
                 self.output_signal.emit(message)
                 original_print(*args, **kwargs)
