@@ -360,7 +360,7 @@ class DOEBatchSetup:
 
                 # Calculate scaled values
                 scaled_lk = base_lk + scale_value
-                scaled_lZ0 = base_lZ0 + scale_value
+                scaled_lZ0 = base_lZ0 - scale_value
                 scaled_lKG = base_lKG + (0.86 * scale_value)
                 scaled_lSK = base_lSK + (0.45 * scale_value)
 
@@ -437,7 +437,7 @@ class DOEBatchSetup:
                     print(f"            lSK = {scaled_lSK:.6f}")
 
                     # Update options_piston.txt with the correct IM_piston_path
-                    options_piston_file = dest_t_folder / 'options_piston.txt'
+                    options_piston_file = dest_t_folder / 'input' / 'options_piston.txt'
 
                     if options_piston_file.exists():
                         # Read the options_piston.txt file
