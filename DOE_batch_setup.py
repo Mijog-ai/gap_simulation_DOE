@@ -352,6 +352,12 @@ class DOEBatchSetup:
                 folder_path.mkdir(parents=True, exist_ok=True)
                 print(f"   📁 Created folder: {folder_name}")
 
+                # Create IM_piston folder inside the scaled folder
+                im_piston_folder = folder_path / 'IM_piston'
+                im_piston_folder.mkdir(parents=True, exist_ok=True)
+                im_piston_path = str(im_piston_folder.resolve())
+                print(f"      📁 Created IM_piston folder: {im_piston_path}")
+
                 # Calculate scaled values
                 scaled_lk = base_lk + scale_value
                 scaled_lZ0 = base_lZ0 + scale_value
@@ -429,6 +435,32 @@ class DOEBatchSetup:
                     print(f"            lZ0 = {scaled_lZ0:.6f}")
                     print(f"            lKG = {scaled_lKG:.6f}")
                     print(f"            lSK = {scaled_lSK:.6f}")
+
+                    # Update options_piston.txt with the correct IM_piston_path
+                    options_piston_file = dest_t_folder / 'options_piston.txt'
+
+                    if options_piston_file.exists():
+                        # Read the options_piston.txt file
+                        with open(options_piston_file, 'r') as f:
+                            options_content = f.read()
+
+                        # Replace the IM_piston_path line with the actual path
+                        # Pattern matches: IM_piston_path followed by any path
+                        options_content = re.sub(
+                            r'(^\s*IM_piston_path\s+).*$',
+                            lambda m: f'{m.group(1)}{im_piston_path}',
+                            options_content,
+                            flags=re.MULTILINE
+                        )
+
+                        # Write the updated content back
+                        with open(options_piston_file, 'w') as f:
+                            f.write(options_content)
+
+                        print(f"         ✓ Updated options_piston.txt with IM_piston_path:")
+                        print(f"            {im_piston_path}")
+                    else:
+                        print(f"         ⚠ options_piston.txt not found in {t_folder.name}")
 
                 created_folders.append(folder_name)
 
