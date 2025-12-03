@@ -7,7 +7,11 @@ This script prepares the environment for batch runs of MZ simulation
 import os
 import shutil
 import re
+import csv
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext
 from pathlib import Path
+import threading
 
 
 class DOEBatchSetup:
@@ -140,11 +144,8 @@ class DOEBatchSetup:
             
             if dest_file.exists():
                 print(f"⚠ Destination file already exists: {dest_file}")
-                response = input("Do you want to overwrite it? (y/n): ").lower()
-                if response != 'y':
-                    print("Skipping copy operation.")
-                    return True
-            
+                print("  Overwriting...")
+
             # Perform the copy
             shutil.copy2(source_file, dest_file)
             print(f"✓ Successfully copied piston_pr.inp")
@@ -224,63 +225,306 @@ class DOEBatchSetup:
             print(f"✗ Error reading geometry.txt: {e}")
             return None
 
+    def read_lk_scale_values(self, csv_file_path):
+        """
+        Read lK_scale_value from CSV file
+
+        Args:
+            csv_file_path: Path to the CSV file containing lK_scale_value
+
+        Returns:
+            list: List of lK_scale_value values
+        """
+        print("=" * 70)
+        print("READING lK_scale_value FROM CSV FILE")
+        print("=" * 70)
+
+        try:
+            csv_path = Path(csv_file_path)
+            if not csv_path.exists():
+                print(f"✗ CSV file not found: {csv_path}")
+                return None
+
+            print(f"\n📖 Reading file: {csv_path}")
+
+            lk_values = []
+            with open(csv_path, 'r') as f:
+                reader = csv.reader(f)
+                header = next(reader, None)  # Skip header
+
+                for row in reader:
+                    if row and row[0].strip():  # Check if row is not empty
+                        try:
+                            value = float(row[0].strip())
+                            lk_values.append(value)
+                        except ValueError:
+                            print(f"⚠ Warning: Could not convert '{row[0]}' to number, skipping...")
+
+            print(f"\n✓ Successfully read {len(lk_values)} lK_scale_value entries:")
+            for i, val in enumerate(lk_values, 1):
+                print(f"   {i}. {val}")
+
+            print("=" * 70 + "\n")
+
+            return lk_values
+
+        except Exception as e:
+            print(f"✗ Error reading CSV file: {e}")
+            return None
+
+
+class DOEBatchGUI:
+    """
+    GUI for DOE Batch Setup
+    """
+    def __init__(self, root):
+        self.root = root
+        self.root.title("DOE Batch Simulation Setup")
+        self.root.geometry("800x600")
+
+        # Variables
+        self.base_folder_var = tk.StringVar()
+        self.csv_file_var = tk.StringVar()
+
+        # Create GUI elements
+        self.create_widgets()
+
+    def create_widgets(self):
+        """Create all GUI widgets"""
+        # Title
+        title_frame = tk.Frame(self.root, bg="#2c3e50", pady=10)
+        title_frame.pack(fill=tk.X)
+
+        title_label = tk.Label(
+            title_frame,
+            text="DOE BATCH SIMULATION SETUP",
+            font=("Arial", 16, "bold"),
+            bg="#2c3e50",
+            fg="white"
+        )
+        title_label.pack()
+
+        # Input Frame
+        input_frame = tk.Frame(self.root, padx=20, pady=20)
+        input_frame.pack(fill=tk.X)
+
+        # Base Folder Selection
+        tk.Label(
+            input_frame,
+            text="Base Folder Path:",
+            font=("Arial", 10, "bold")
+        ).grid(row=0, column=0, sticky="w", pady=5)
+
+        tk.Entry(
+            input_frame,
+            textvariable=self.base_folder_var,
+            width=60
+        ).grid(row=0, column=1, padx=5, pady=5)
+
+        tk.Button(
+            input_frame,
+            text="Browse",
+            command=self.browse_base_folder,
+            width=10
+        ).grid(row=0, column=2, padx=5, pady=5)
+
+        # CSV File Selection
+        tk.Label(
+            input_frame,
+            text="CSV File (lK_scale_value):",
+            font=("Arial", 10, "bold")
+        ).grid(row=1, column=0, sticky="w", pady=5)
+
+        tk.Entry(
+            input_frame,
+            textvariable=self.csv_file_var,
+            width=60
+        ).grid(row=1, column=1, padx=5, pady=5)
+
+        tk.Button(
+            input_frame,
+            text="Browse",
+            command=self.browse_csv_file,
+            width=10
+        ).grid(row=1, column=2, padx=5, pady=5)
+
+        # Run Button
+        button_frame = tk.Frame(self.root, pady=10)
+        button_frame.pack()
+
+        self.run_button = tk.Button(
+            button_frame,
+            text="Run Batch Setup",
+            command=self.run_setup,
+            font=("Arial", 12, "bold"),
+            bg="#27ae60",
+            fg="white",
+            width=20,
+            height=2
+        )
+        self.run_button.pack()
+
+        # Output Text Area
+        output_frame = tk.Frame(self.root, padx=20, pady=10)
+        output_frame.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            output_frame,
+            text="Output Log:",
+            font=("Arial", 10, "bold")
+        ).pack(anchor="w")
+
+        self.output_text = scrolledtext.ScrolledText(
+            output_frame,
+            wrap=tk.WORD,
+            font=("Courier", 9),
+            bg="#f8f9fa"
+        )
+        self.output_text.pack(fill=tk.BOTH, expand=True)
+
+    def browse_base_folder(self):
+        """Browse for base folder"""
+        folder_path = filedialog.askdirectory(title="Select Base Folder")
+        if folder_path:
+            self.base_folder_var.set(folder_path)
+            self.log_output(f"Base folder selected: {folder_path}\n")
+
+    def browse_csv_file(self):
+        """Browse for CSV file"""
+        file_path = filedialog.askopenfilename(
+            title="Select CSV File",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if file_path:
+            self.csv_file_var.set(file_path)
+            self.log_output(f"CSV file selected: {file_path}\n")
+
+    def log_output(self, message):
+        """Log message to output text area"""
+        self.output_text.insert(tk.END, message)
+        self.output_text.see(tk.END)
+        self.root.update_idletasks()
+
+    def run_setup(self):
+        """Run the batch setup process"""
+        base_folder = self.base_folder_var.get()
+        csv_file = self.csv_file_var.get()
+
+        # Validate inputs
+        if not base_folder:
+            messagebox.showerror("Error", "Please select a base folder!")
+            return
+
+        if not csv_file:
+            messagebox.showerror("Error", "Please select a CSV file!")
+            return
+
+        # Disable run button
+        self.run_button.config(state=tk.DISABLED, text="Running...")
+        self.output_text.delete(1.0, tk.END)
+
+        # Run in a separate thread to keep GUI responsive
+        thread = threading.Thread(target=self.execute_setup, args=(base_folder, csv_file))
+        thread.daemon = True
+        thread.start()
+
+    def execute_setup(self, base_folder, csv_file):
+        """Execute the actual setup process"""
+        try:
+            # Redirect print statements to GUI
+            import sys
+            from io import StringIO
+
+            # Custom print function that also outputs to GUI
+            original_print = print
+            def gui_print(*args, **kwargs):
+                output = StringIO()
+                original_print(*args, file=output, **kwargs)
+                message = output.getvalue()
+                self.log_output(message)
+                original_print(*args, **kwargs)
+
+            # Replace built-in print
+            import builtins
+            builtins.print = gui_print
+
+            # Initialize the setup
+            setup = DOEBatchSetup(base_folder)
+
+            # Verify folder structure
+            print("\n")
+            print("╔" + "═" * 68 + "╗")
+            print("║" + " " * 15 + "DOE BATCH SIMULATION SETUP" + " " * 27 + "║")
+            print("╚" + "═" * 68 + "╝")
+            print("\n")
+
+            status = setup.verify_folder_structure()
+
+            # Check if we can proceed
+            if not all([status.get('base_folder'), status.get('INP'),
+                        status.get('Zscalar'), status.get('geometry_txt')]):
+                print("❌ Cannot proceed due to missing critical files/folders.")
+                print("Please ensure the folder structure is correct and try again.")
+                messagebox.showerror("Error", "Missing critical files/folders. Check the output log.")
+                return
+
+            # Read lK_scale_values from CSV
+            lk_values = setup.read_lk_scale_values(csv_file)
+
+            if not lk_values:
+                print("❌ Could not read lK_scale_values from CSV file.")
+                messagebox.showerror("Error", "Failed to read CSV file. Check the output log.")
+                return
+
+            # Execute Step 0
+            step0_success = setup.step0_copy_piston_pr()
+
+            # Execute Step 1
+            geometry_values = setup.step1_extract_geometry_values()
+
+            # Summary
+            print("=" * 70)
+            print("SETUP SUMMARY")
+            print("=" * 70)
+            print(f"Step 0 (Copy piston_pr.inp): {'✓ SUCCESS' if step0_success else '✗ FAILED'}")
+            print(f"Step 1 (Extract geometry):   {'✓ SUCCESS' if geometry_values else '✗ FAILED'}")
+            print(f"CSV lK_scale_values read:    ✓ SUCCESS ({len(lk_values)} values)")
+            print("=" * 70)
+
+            if geometry_values and lk_values:
+                print("\n✓ Setup complete! You can now proceed with the next steps.")
+                print(f"\nExtracted geometry values:")
+                for key, val in geometry_values.items():
+                    print(f"  {key}: {val}")
+                print(f"\nlK_scale_values from CSV: {lk_values}")
+                messagebox.showinfo("Success", f"Batch setup completed successfully!\n{len(lk_values)} lK_scale_values loaded.")
+            else:
+                print("\n⚠ Setup completed with warnings. Please check the errors above.")
+                messagebox.showwarning("Warning", "Setup completed with warnings. Check the output log.")
+
+            print("\n")
+
+            # Restore original print
+            builtins.print = original_print
+
+        except Exception as e:
+            self.log_output(f"\n✗ Error during setup: {e}\n")
+            messagebox.showerror("Error", f"An error occurred: {e}")
+            import builtins
+            builtins.print = original_print
+
+        finally:
+            # Re-enable run button
+            self.run_button.config(state=tk.NORMAL, text="Run Batch Setup")
+
 
 def main():
     """
-    Main function to run the DOE batch setup
+    Main function to run the DOE batch setup with GUI
     """
-    print("\n")
-    print("╔" + "═" * 68 + "╗")
-    print("║" + " " * 15 + "DOE BATCH SIMULATION SETUP" + " " * 27 + "║")
-    print("╚" + "═" * 68 + "╝")
-    print("\n")
-    
-    # Get base folder path from user or use current directory
-    base_folder = "H:/Base_folder"
-    if not base_folder:
-        base_folder = os.getcwd()
-    
-    # Initialize the setup
-    setup = DOEBatchSetup(base_folder)
-    
-    # Verify folder structure
-    status = setup.verify_folder_structure()
-    
-    # Check if we can proceed
-    if not all([status.get('base_folder'), status.get('INP'), 
-                status.get('Zscalar'), status.get('geometry_txt')]):
-        print("❌ Cannot proceed due to missing critical files/folders.")
-        print("Please ensure the folder structure is correct and try again.")
-        return
-    
-    # Ask user if they want to proceed
-    response = input("\nDo you want to proceed with Step 0 and Step 1? (y/n): ").lower()
-    if response != 'y':
-        print("Operation cancelled by user.")
-        return
-    
-    # Execute Step 0
-    step0_success = setup.step0_copy_piston_pr()
-    
-    # Execute Step 1
-    geometry_values = setup.step1_extract_geometry_values()
-    
-    # Summary
-    print("=" * 70)
-    print("SETUP SUMMARY")
-    print("=" * 70)
-    print(f"Step 0 (Copy piston_pr.inp): {'✓ SUCCESS' if step0_success else '✗ FAILED'}")
-    print(f"Step 1 (Extract geometry):   {'✓ SUCCESS' if geometry_values else '✗ FAILED'}")
-    print("=" * 70)
-    
-    if geometry_values:
-        print("\n✓ Setup complete! You can now proceed with the next steps.")
-        print(f"\nExtracted values are stored in the geometry_values dictionary:")
-        print(f"  {geometry_values}")
-    else:
-        print("\n⚠ Setup completed with warnings. Please check the errors above.")
-    
-    print("\n")
+    root = tk.Tk()
+    app = DOEBatchGUI(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":

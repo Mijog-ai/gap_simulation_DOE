@@ -1,13 +1,24 @@
 # DOE Batch Simulation Setup Script
 
 ## Overview
-This Python script automates the initial setup for Design of Experiments (DOE) batch simulations for MZ hydraulic pump simulations. It verifies folder structure, copies required files, and extracts geometry parameters.
+This Python script provides a GUI-based tool to automate the initial setup for Design of Experiments (DOE) batch simulations for MZ hydraulic pump simulations. It verifies folder structure, copies required files, extracts geometry parameters, and reads lK_scale_value parameters from a CSV file.
 
 ## Features
 
+### ✓ GUI Interface
+- User-friendly graphical interface using tkinter
+- Browse buttons for folder and file selection
+- Real-time output log display
+- Automatic execution without user prompts
+
+### ✓ CSV Parameter Import
+- Reads `lK_scale_value` parameters from CSV file
+- Supports multiple scale values for batch processing
+- Automatic validation and error reporting
+
 ### ✓ Step 0: File Copy Operation
 - Copies `piston_pr.inp` from `INP` folder to `Zscalar` folder
-- One-time operation with overwrite protection
+- Automatic overwrite (no prompts)
 
 ### ✓ Step 1: Geometry Parameter Extraction
 - Extracts the following parameters from `geometry.txt`:
@@ -45,22 +56,47 @@ base_folder/
 
 ## Usage
 
-### Interactive Mode (Recommended)
+### GUI Mode (Recommended)
 ```bash
-python3 doe_batch_setup.py
+python3 DOE_batch_setup.py
 ```
 
-This will:
-1. Prompt you for the base folder path
-2. Verify the folder structure
-3. Ask for confirmation before proceeding
-4. Execute Step 0 and Step 1
-5. Display a summary of results
+This will launch a graphical interface where you can:
+1. Select the base folder path using the Browse button
+2. Select the CSV file containing lK_scale_value parameters
+3. Click "Run Batch Setup" to execute all steps automatically
+4. View real-time progress in the output log
+5. Get a success/error popup when complete
+
+The GUI automatically:
+- Verifies the folder structure
+- Copies piston_pr.inp (overwrites if exists)
+- Extracts geometry parameters from geometry.txt
+- Reads all lK_scale_values from the CSV file
+- No user prompts during execution
+
+### CSV File Format
+
+The CSV file should contain lK_scale_value entries with a header row:
+
+```csv
+lK_scale_value
+5
+10
+15
+20
+25
+30
+35
+40
+```
+
+Each row after the header represents a scale value to be used in batch processing.
 
 ### Programmatic Usage
 
 ```python
-from doe_batch_setup import DOEBatchSetup
+from DOE_batch_setup import DOEBatchSetup
 
 # Initialize
 setup = DOEBatchSetup('/path/to/base_folder')
@@ -74,11 +110,15 @@ success = setup.step0_copy_piston_pr()
 # Execute Step 1
 geometry_values = setup.step1_extract_geometry_values()
 
+# Read CSV values
+lk_values = setup.read_lk_scale_values('/path/to/csv_file.csv')
+
 # Access extracted values
 print(f"lK = {geometry_values['lK']} mm")
 print(f"lZ0 = {geometry_values['lZ0']} mm")
 print(f"lKG = {geometry_values['lKG']} mm")
 print(f"lSK = {geometry_values['lSK']} mm")
+print(f"lK_scale_values = {lk_values}")
 ```
 
 ## Output
@@ -128,25 +168,30 @@ After completing Step 0 and Step 1, you can:
 ## Requirements
 
 - Python 3.6 or higher
-- Standard library only (no external dependencies)
+- tkinter (usually included with Python)
+- Standard library only (no other external dependencies)
 
 ## Error Handling
 
 The script includes comprehensive error handling:
 - ✓ Missing file/folder detection
-- ✓ Overwrite protection
+- ✓ CSV file validation and parsing
 - ✓ Parameter extraction validation
-- ✓ Clear error messages with guidance
+- ✓ Clear error messages with GUI popups
+- ✓ Real-time progress logging
 
 ## Notes
 
 - The script uses regex pattern matching to extract parameters from geometry.txt
 - All extracted values are returned as floats
-- The copy operation includes a confirmation prompt if the destination file already exists
+- The copy operation automatically overwrites existing files (no prompts)
 - All paths are handled using `pathlib.Path` for cross-platform compatibility
+- The GUI runs in a separate thread to remain responsive during execution
+- Print statements are redirected to the GUI output log for real-time feedback
 
 ## Author
 Created for MZ hydraulic pump simulation batch processing
 
 ## Version
+2.0.0 - GUI-based version with CSV import and automatic execution (no prompts)
 1.0.0 - Initial release with Step 0 and Step 1 implementation
