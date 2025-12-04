@@ -1030,7 +1030,7 @@ class InflugenRunner:
 
 
 class GapExeRunner:
-    """Runner for gap.exe parallel execution in all T folders"""
+    """Runner for fsti_gap.exe parallel execution in all T folders"""
 
     def __init__(self, base_folder):
         """
@@ -1084,7 +1084,7 @@ class GapExeRunner:
 
     def run_gap_exe_in_folder(self, t_folder_info):
         """
-        Run gap.exe in a single T folder
+        Run fsti_gap.exe in a single T folder
 
         Args:
             t_folder_info: Tuple of (t_folder_path, scaled_folder_name)
@@ -1096,20 +1096,20 @@ class GapExeRunner:
         folder_display_name = f"{scaled_folder_name}/{t_folder.name}"
 
         try:
-            gap_exe_path = t_folder / 'gap.exe'
+            gap_exe_path = t_folder / 'fsti_gap.exe'
 
             if not gap_exe_path.exists():
-                return folder_display_name, False, "gap.exe not found in folder"
+                return folder_display_name, False, "fsti_gap.exe not found in folder"
 
             # Change to the T folder directory
             original_dir = os.getcwd()
             os.chdir(t_folder)
 
-            print(f"   🚀 Running gap.exe in: {folder_display_name}")
+            print(f"   🚀 Running fsti_gap.exe in: {folder_display_name}")
 
             # Run gap.exe
             result = subprocess.run(
-                ['gap.exe'],
+                ['fsti_gap.exe'],
                 capture_output=True,
                 text=True,
                 timeout=7200  # 2 hour timeout per execution
