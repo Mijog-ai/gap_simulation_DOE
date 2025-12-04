@@ -469,6 +469,37 @@ class DOEBatchSetup:
                     else:
                         print(f"         ⚠ options_piston.txt not found in {t_folder.name}")
 
+                    # Update thermal_piston.txt with the correct meshFile path
+                    thermal_piston_file = dest_t_folder / 'input' / 'thermal_piston.txt'
+
+                    if thermal_piston_file.exists():
+                        # Read the thermal_piston.txt file
+                        # Use latin-1 encoding to preserve all bytes without decoding errors
+                        with open(thermal_piston_file, 'r', encoding='latin-1') as f:
+                            thermal_content = f.read()
+
+                        # Construct the scaled inp file path (relative to IM_piston folder)
+                        scaled_inp_filename = 'piston_pr_scaled.inp'
+                        scaled_inp_full_path = str((im_piston_folder / scaled_inp_filename).resolve())
+
+                        # Replace the meshFile line with the path to scaled inp file
+                        # Pattern matches: meshFile followed by whitespace and any path
+                        thermal_content = re.sub(
+                            r'(^\s*meshFile\s+).*\.inp',
+                            lambda m: f'{m.group(1)}{scaled_inp_full_path}',
+                            thermal_content,
+                            flags=re.MULTILINE
+                        )
+
+                        # Write the updated content back
+                        with open(thermal_piston_file, 'w', encoding='latin-1') as f:
+                            f.write(thermal_content)
+
+                        print(f"         ✓ Updated thermal_piston.txt with meshFile:")
+                        print(f"            {scaled_inp_full_path}")
+                    else:
+                        print(f"         ⚠ thermal_piston.txt not found in {t_folder.name}")
+
                 created_folders.append(folder_name)
 
             print("\n" + "=" * 70)
