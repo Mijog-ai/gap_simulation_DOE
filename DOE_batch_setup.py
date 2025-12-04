@@ -1125,6 +1125,12 @@ class GapExeRunner:
                 print(f"   ✓ {folder_display_name}: Completed successfully")
             else:
                 print(f"   ✗ {folder_display_name}: Failed (exit code: {result.returncode})")
+                # Print error output for debugging
+                if output:
+                    print(f"      Error output (first 500 chars):")
+                    for line in output[:500].split('\n'):
+                        if line.strip():
+                            print(f"      {line}")
 
             return folder_display_name, success, output
 
@@ -1213,6 +1219,17 @@ class GapExeRunner:
             for folder, result in sorted(results.items()):
                 status_symbol = "✓" if result['success'] else "✗"
                 print(f"   {status_symbol} {folder}")
+
+        # Show error details for failed executions
+        failed_results = {k: v for k, v in results.items() if not v['success']}
+        if failed_results:
+            print("\nError Details (first 300 chars of each):")
+            for folder, result in sorted(failed_results.items()):
+                print(f"\n   {folder}:")
+                error_preview = result.get('output', 'No error output captured')[:300]
+                for line in error_preview.split('\n'):
+                    if line.strip():
+                        print(f"      {line}")
 
         print("=" * 70 + "\n")
 
