@@ -2,6 +2,7 @@
 """
 DOE Batch Simulation Setup Script
 This script prepares the environment for batch runs of MZ simulation
+Enhanced with influgen processing capabilities
 """
 
 import os
@@ -23,7 +24,7 @@ class DOEBatchSetup:
     def __init__(self, base_folder):
         """
         Initialize the DOE Batch Setup
-        
+
         Args:
             base_folder: Path to the base folder containing all simulation files
         """
@@ -35,20 +36,20 @@ class DOEBatchSetup:
             'Zscalar': self.base_folder / 'Zscalar'
         }
         self.geometry_file = self.base_folder / 'geometry.txt'
-        
+
     def verify_folder_structure(self):
         """
         Verify that all required folders and files exist
-        
+
         Returns:
             dict: Status of each required item
         """
         print("=" * 70)
         print("VERIFYING FOLDER STRUCTURE")
         print("=" * 70)
-        
+
         status = {}
-        
+
         # Check base folder
         print(f"\n📁 Base folder: {self.base_folder}")
         if self.base_folder.exists():
@@ -58,7 +59,7 @@ class DOEBatchSetup:
             print("   ✗ Base folder NOT found!")
             status['base_folder'] = False
             return status
-        
+
         # Check required folders
         print("\n📂 Checking required folders:")
         for folder_name, folder_path in self.required_folders.items():
@@ -68,7 +69,7 @@ class DOEBatchSetup:
             else:
                 print(f"   ✗ {folder_name} folder NOT found: {folder_path}")
                 status[folder_name] = False
-        
+
         # Check geometry.txt
         print("\n📄 Checking geometry file:")
         if self.geometry_file.exists():
@@ -77,7 +78,7 @@ class DOEBatchSetup:
         else:
             print(f"   ✗ geometry.txt NOT found: {self.geometry_file}")
             status['geometry_txt'] = False
-        
+
         # Check piston_pr.inp in INP folder
         piston_pr_path = self.required_folders['INP'] / 'piston_pr.inp'
         print("\n📄 Checking INP files:")
@@ -87,7 +88,7 @@ class DOEBatchSetup:
         else:
             print(f"   ✗ piston_pr.inp NOT found: {piston_pr_path}")
             status['piston_pr_inp'] = False
-        
+
         # Check scalar.txt in Zscalar folder
         scalar_path = self.required_folders['Zscalar'] / 'scalar.txt'
         if scalar_path.exists():
@@ -96,7 +97,7 @@ class DOEBatchSetup:
         else:
             print(f"   ⚠ scalar.txt NOT found: {scalar_path} (may be created later)")
             status['scalar_txt'] = False
-        
+
         # Check simulation subfolders
         print("\n📂 Checking simulation subfolders:")
         if status.get('simulation', False):
@@ -109,7 +110,7 @@ class DOEBatchSetup:
             else:
                 print("   ⚠ No simulation subfolders found")
                 status['simulation_subfolders'] = False
-        
+
         print("\n" + "=" * 70)
         all_critical = all([
             status.get('base_folder', False),
@@ -118,35 +119,35 @@ class DOEBatchSetup:
             status.get('geometry_txt', False),
             status.get('piston_pr_inp', False)
         ])
-        
+
         if all_critical:
             print("✓ All critical files and folders are present!")
         else:
             print("✗ Some critical files or folders are missing!")
         print("=" * 70 + "\n")
-        
+
         return status
-    
+
     def step0_copy_piston_pr(self):
         """
         Step 0: Copy piston_pr.inp from INP folder to Zscalar folder
         This step is executed only once
-        
+
         Returns:
             bool: True if successful, False otherwise
         """
         print("=" * 70)
         print("STEP 0: COPYING piston_pr.inp TO Zscalar FOLDER")
         print("=" * 70)
-        
+
         source_file = self.required_folders['INP'] / 'piston_pr.inp'
         dest_file = self.required_folders['Zscalar'] / 'piston_pr.inp'
-        
+
         try:
             if not source_file.exists():
                 print(f"✗ Source file not found: {source_file}")
                 return False
-            
+
             if dest_file.exists():
                 print(f"⚠ Destination file already exists: {dest_file}")
                 print("  Overwriting...")
@@ -157,75 +158,75 @@ class DOEBatchSetup:
             print(f"  From: {source_file}")
             print(f"  To:   {dest_file}")
             return True
-            
+
         except Exception as e:
             print(f"✗ Error during copy operation: {e}")
             return False
         finally:
             print("=" * 70 + "\n")
-    
+
     def step1_extract_geometry_values(self):
         """
         Step 1: Extract required values from geometry.txt
-        
+
         Returns:
             dict: Dictionary containing the extracted values
         """
         print("=" * 70)
         print("STEP 1: EXTRACTING VALUES FROM geometry.txt")
         print("=" * 70)
-        
+
         required_params = ['lK', 'lZ0', 'lKG', 'lSK']
         extracted_values = {}
-        
+
         try:
             if not self.geometry_file.exists():
                 print(f"✗ geometry.txt not found: {self.geometry_file}")
                 return None
-            
+
             print(f"\n📖 Reading file: {self.geometry_file}")
-            
+
             with open(self.geometry_file, 'r', encoding='utf-8', errors='replace') as f:
                 content = f.read()
-            
+
             # Extract values using regex
             for param in required_params:
                 # Pattern: parameter name followed by whitespace and a number
                 pattern = rf'^\s*{param}\s+([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)'
                 match = re.search(pattern, content, re.MULTILINE)
-                
+
                 if match:
                     value = float(match.group(1))
                     extracted_values[param] = value
                 else:
                     print(f"⚠ Warning: Could not find parameter '{param}' in geometry.txt")
                     extracted_values[param] = None
-            
+
             # Display extracted values
             print("\n" + "=" * 70)
             print("EXTRACTED GEOMETRY VALUES")
             print("=" * 70)
-            
+
             for param in required_params:
                 value = extracted_values.get(param)
                 if value is not None:
                     print(f"  {param:10s} = {value:12.6f} mm")
                 else:
                     print(f"  {param:10s} = NOT FOUND")
-            
+
             print("=" * 70)
-            
+
             # Verify all values were found
             all_found = all(v is not None for v in extracted_values.values())
             if all_found:
                 print("✓ All required values successfully extracted!")
             else:
                 print("✗ Some values could not be extracted!")
-            
+
             print("=" * 70 + "\n")
-            
+
             return extracted_values
-            
+
         except Exception as e:
             print(f"✗ Error reading geometry.txt: {e}")
             return None
@@ -486,6 +487,7 @@ class DOEBatchSetup:
 
 class PistonScalingRunner:
     """Runner for piston scaling operations"""
+
     def __init__(self, base_folder):
         """
         Initialize the Piston Scaling Runner
@@ -534,11 +536,11 @@ class PistonScalingRunner:
         print(f"✓ simulation folder exists: {self.simulation_folder}")
 
         # Find IM_scaled_piston folders
-        scaled_folders = list(self.simulation_folder.glob('IM_scaled_piston_*'))
+        scaled_folders = list(self.simulation_folder.glob('IM_Scaled_piston_*'))
         if not scaled_folders:
-            print(f"✗ No IM_scaled_piston_* folders found in: {self.simulation_folder}")
+            print(f"✗ No IM_Scaled_piston_* folders found in: {self.simulation_folder}")
             return False
-        print(f"✓ Found {len(scaled_folders)} IM_scaled_piston_* folders")
+        print(f"✓ Found {len(scaled_folders)} IM_Scaled_piston_* folders")
 
         print("=" * 70 + "\n")
         return True
@@ -555,13 +557,13 @@ class PistonScalingRunner:
         print("=" * 70)
 
         # Find all IM_scaled_piston folders
-        scaled_folders = sorted(self.simulation_folder.glob('IM_scaled_piston_*'))
+        scaled_folders = sorted(self.simulation_folder.glob('IM_Scaled_piston_*'))
 
         if not scaled_folders:
-            print("✗ No IM_scaled_piston_* folders found!")
+            print("✗ No IM_Scaled_piston_* folders found!")
             return []
 
-        print(f"\nFound {len(scaled_folders)} IM_scaled_piston folders\n")
+        print(f"\nFound {len(scaled_folders)} IM_Scaled_piston folders\n")
 
         copied_folders = []
 
@@ -616,7 +618,8 @@ class PistonScalingRunner:
 
             # If paths are relative, resolve them relative to the scalar config file directory
             config_dir = Path(scalar_config_file).parent
-            original_inp_path = config_dir / original_inp if not Path(original_inp).is_absolute() else Path(original_inp)
+            original_inp_path = config_dir / original_inp if not Path(original_inp).is_absolute() else Path(
+                original_inp)
             new_inp_path = config_dir / new_inp if not Path(new_inp).is_absolute() else Path(new_inp)
 
             # Check if original input file exists
@@ -694,10 +697,10 @@ class PistonScalingRunner:
         print("=" * 70)
 
         # Find all IM_scaled_piston folders
-        scaled_folders = sorted(self.simulation_folder.glob('IM_scaled_piston_*'))
+        scaled_folders = sorted(self.simulation_folder.glob('IM_Scaled_piston_*'))
 
         if not scaled_folders:
-            print("✗ No IM_scaled_piston_* folders found!")
+            print("✗ No IM_Scaled_piston_* folders found!")
             return {}
 
         print(f"\nProcessing {len(scaled_folders)} folders\n")
@@ -747,6 +750,284 @@ class PistonScalingRunner:
         return results
 
 
+class InflugenRunner:
+    """Runner for influgen operations"""
+
+    def __init__(self, base_folder):
+        """
+        Initialize the Influgen Runner
+
+        Args:
+            base_folder: Path to the base folder containing all simulation files
+        """
+        self.base_folder = Path(base_folder)
+        self.influgen_source = self.base_folder / 'influgen'
+        self.simulation_folder = self.base_folder / 'simulation'
+
+    def verify_influgen_folder(self):
+        """
+        Verify that influgen source folder exists
+
+        Returns:
+            bool: True if influgen folder exists, False otherwise
+        """
+        print("=" * 70)
+        print("VERIFYING INFLUGEN FOLDER")
+        print("=" * 70)
+
+        if not self.influgen_source.exists():
+            print(f"✗ influgen folder NOT found: {self.influgen_source}")
+            return False
+
+        print(f"✓ influgen folder exists: {self.influgen_source}")
+
+        # Check for key files
+        input_txt = self.influgen_source / 'input' / 'input.txt'
+        piston_im_cmd = self.influgen_source / 'piston_IM.cmd'
+
+        if input_txt.exists():
+            print(f"✓ input.txt exists: {input_txt}")
+        else:
+            print(f"⚠ input.txt NOT found: {input_txt}")
+
+        if piston_im_cmd.exists():
+            print(f"✓ piston_IM.cmd exists: {piston_im_cmd}")
+        else:
+            print(f"⚠ piston_IM.cmd NOT found: {piston_im_cmd}")
+
+        print("=" * 70 + "\n")
+        return True
+
+    def copy_influgen_files(self, dest_folder):
+        """
+        Copy all influgen files to destination folder
+
+        Args:
+            dest_folder: Destination folder path
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get list of files to preserve (piston_pr files)
+            preserve_files = ['piston_pr.inp', 'piston_pr_scaled.inp']
+
+            # Create destination folder if it doesn't exist
+            dest_folder.mkdir(parents=True, exist_ok=True)
+
+            # Copy all files and folders from influgen
+            for item in self.influgen_source.iterdir():
+                src_path = item
+                dest_path = dest_folder / item.name
+
+                # Skip if this would overwrite a preserve file at root level
+                if item.name in preserve_files and dest_path.exists():
+                    continue
+
+                if src_path.is_dir():
+                    if dest_path.exists():
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(src_path, dest_path)
+                else:
+                    shutil.copy2(src_path, dest_path)
+
+            return True
+
+        except Exception as e:
+            print(f"   ✗ Error copying influgen files: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def update_input_txt(self, input_txt_path, scaled_inp_filename):
+        """
+        Update input.txt file with the correct scaled .inp filename
+
+        Args:
+            input_txt_path: Path to input.txt file
+            scaled_inp_filename: Name of the scaled .inp file
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not input_txt_path.exists():
+                print(f"   ✗ input.txt not found: {input_txt_path}")
+                return False
+
+            # Read the input.txt file
+            with open(input_txt_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+
+            # Replace meshFile line
+            # Pattern: meshFile followed by whitespace and filename
+            pattern = r'(meshFile\s+)[\w\-\.]+\.inp'
+            replacement = f'\\1{scaled_inp_filename}'
+
+            updated_content = re.sub(pattern, replacement, content)
+
+            # Write back the updated content
+            with open(input_txt_path, 'w', encoding='utf-8') as f:
+                f.write(updated_content)
+
+            return True
+
+        except Exception as e:
+            print(f"   ✗ Error updating input.txt: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def run_piston_im_cmd(self, im_piston_folder):
+        """
+        Run piston_IM.cmd in the specified folder
+
+        Args:
+            im_piston_folder: Path to IM_piston folder
+
+        Returns:
+            tuple: (success: bool, output: str)
+        """
+        try:
+            piston_im_cmd = im_piston_folder / 'piston_IM.cmd'
+
+            if not piston_im_cmd.exists():
+                return False, f"piston_IM.cmd not found in {im_piston_folder}"
+
+            # Change to the IM_piston directory
+            original_dir = os.getcwd()
+            os.chdir(im_piston_folder)
+
+            print(f"   🚀 Running command in: {im_piston_folder}")
+
+            # Run the command
+            result = subprocess.run(
+                ['cmd.exe', '/c', 'piston_IM.cmd'],
+                capture_output=True,
+                text=True,
+                timeout=3600  # 1 hour timeout
+            )
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+            success = result.returncode == 0
+            output = result.stdout + result.stderr
+
+            return success, output
+
+        except subprocess.TimeoutExpired:
+            os.chdir(original_dir)
+            return False, "Command execution timed out (>1 hour)"
+        except Exception as e:
+            os.chdir(original_dir)
+            return False, f"Error running command: {e}"
+
+    def process_all_scaled_folders(self):
+        """
+        Process all IM_Scaled_piston folders: copy influgen files, update input.txt, run piston_IM.cmd
+
+        Returns:
+            dict: Dictionary with folder names and their execution status
+        """
+        print("=" * 70)
+        print("STEP 3: PROCESSING INFLUGEN FOR ALL IM_SCALED_PISTON FOLDERS")
+        print("=" * 70)
+
+        # Find all IM_scaled_piston folders
+        scaled_folders = sorted(self.simulation_folder.glob('IM_Scaled_piston_*'))
+
+        if not scaled_folders:
+            print("✗ No IM_Scaled_piston_* folders found!")
+            return {}
+
+        print(f"\nProcessing {len(scaled_folders)} folders\n")
+
+        results = {}
+
+        for scaled_folder in scaled_folders:
+            folder_name = scaled_folder.name
+            im_piston_folder = scaled_folder / 'IM_piston'
+
+            print(f"{'=' * 70}")
+            print(f"📂 Processing: {folder_name}")
+            print(f"{'=' * 70}")
+
+            try:
+                # Step 1: Find the scaled .inp file
+                scaled_inp_files = list(im_piston_folder.glob('piston_pr_scaled*.inp'))
+
+                if not scaled_inp_files:
+                    # Try alternative naming
+                    scaled_inp_files = list(im_piston_folder.glob('*_scaled.inp'))
+
+                if not scaled_inp_files:
+                    print(f"   ⚠ No scaled .inp file found in IM_piston folder, skipping...")
+                    results[folder_name] = 'skipped - no scaled inp file'
+                    continue
+
+                scaled_inp_file = scaled_inp_files[0]
+                scaled_inp_filename = scaled_inp_file.name
+                print(f"   ✓ Found scaled .inp file: {scaled_inp_filename}")
+
+                # Step 2: Copy influgen files
+                print(f"   📋 Copying influgen files to IM_piston folder...")
+                if not self.copy_influgen_files(im_piston_folder):
+                    print(f"   ✗ Failed to copy influgen files")
+                    results[folder_name] = 'failed - copy error'
+                    continue
+                print(f"   ✓ Successfully copied influgen files")
+
+                # Step 3: Update input.txt
+                input_txt_path = im_piston_folder / 'input' / 'input.txt'
+                print(f"   📝 Updating input.txt with meshFile: {scaled_inp_filename}")
+
+                if not self.update_input_txt(input_txt_path, scaled_inp_filename):
+                    print(f"   ✗ Failed to update input.txt")
+                    results[folder_name] = 'failed - update input.txt'
+                    continue
+                print(f"   ✓ Successfully updated input.txt")
+
+                # Step 4: Run piston_IM.cmd
+                print(f"   🚀 Running piston_IM.cmd (this may take a while)...")
+                success, output = self.run_piston_im_cmd(im_piston_folder)
+
+                if success:
+                    print(f"   ✓ piston_IM.cmd executed successfully")
+                    results[folder_name] = 'success'
+                else:
+                    print(f"   ✗ piston_IM.cmd execution failed")
+                    print(f"   Output preview: {output[:200]}...")  # Print first 200 chars
+                    results[folder_name] = 'failed - cmd execution'
+
+            except Exception as e:
+                print(f"   ✗ Exception: {e}")
+                import traceback
+                traceback.print_exc()
+                results[folder_name] = f'error - {str(e)}'
+
+            print()
+
+        # Summary
+        print("=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        success_count = sum(1 for v in results.values() if v == 'success')
+        print(f"Total folders: {len(results)}")
+        print(f"Successful:    {success_count}")
+        print(f"Failed:        {len(results) - success_count}")
+
+        if results:
+            print("\nDetailed Results:")
+            for folder, status in results.items():
+                status_symbol = "✓" if status == "success" else "✗"
+                print(f"   {status_symbol} {folder}: {status}")
+
+        print("=" * 70 + "\n")
+
+        return results
+
+
 class WorkerThread(QThread):
     """Worker thread for running batch setup without blocking GUI"""
     output_signal = pyqtSignal(str)
@@ -766,6 +1047,7 @@ class WorkerThread(QThread):
 
             # Custom print function that emits to GUI
             original_print = print
+
             def gui_print(*args, **kwargs):
                 output = StringIO()
                 # Remove 'file' from kwargs to avoid duplicate argument error
@@ -837,7 +1119,8 @@ class WorkerThread(QThread):
                     print(f"  {key}: {val}")
                 print(f"\nlK_scale_values from CSV: {lk_values}")
                 print(f"\n✓ Created {len(lk_values)} IM_Scaled_piston folders in simulation directory")
-                self.finished_signal.emit(True, f"Batch setup completed successfully!\n{len(lk_values)} folders created with scalar.txt files.")
+                self.finished_signal.emit(True,
+                                          f"Batch setup completed successfully!\n{len(lk_values)} folders created with scalar.txt files.")
             else:
                 print("\n⚠ Setup completed with warnings. Please check the errors above.")
                 self.finished_signal.emit(False, "Setup completed with warnings. Check the output log.")
@@ -873,6 +1156,7 @@ class PistonScalingWorker(QThread):
 
             # Custom print function that emits to GUI
             original_print = print
+
             def gui_print(*args, **kwargs):
                 output = StringIO()
                 kwargs_copy = kwargs.copy()
@@ -926,10 +1210,12 @@ class PistonScalingWorker(QThread):
                 success_count = sum(1 for v in results.values() if v == 'success')
                 if all(v == 'success' for v in results.values()):
                     print("✓ All folders processed successfully!")
-                    self.finished_signal.emit(True, f"Piston scaling completed successfully!\n{success_count} folders processed.")
+                    self.finished_signal.emit(True,
+                                              f"Piston scaling completed successfully!\n{success_count} folders processed.")
                 else:
                     print("⚠ Some folders failed to process. Check the summary above.")
-                    self.finished_signal.emit(False, f"Some folders failed.\n{success_count}/{len(results)} successful.")
+                    self.finished_signal.emit(False,
+                                              f"Some folders failed.\n{success_count}/{len(results)} successful.")
             elif self.operation == 'copy':
                 print("✓ Copy operation completed successfully!")
                 self.finished_signal.emit(True, f"Copied piston_pr.inp to {len(copied_folders)} folders.")
@@ -944,20 +1230,98 @@ class PistonScalingWorker(QThread):
             builtins.print = original_print
 
 
+class InflugenWorker(QThread):
+    """Worker thread for influgen operations"""
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+
+    def __init__(self, base_folder):
+        super().__init__()
+        self.base_folder = base_folder
+
+    def run(self):
+        """Execute the influgen process"""
+        try:
+            # Redirect print statements to GUI
+            from io import StringIO
+            import builtins
+
+            # Custom print function that emits to GUI
+            original_print = print
+
+            def gui_print(*args, **kwargs):
+                output = StringIO()
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('file', None)
+                original_print(*args, file=output, **kwargs_copy)
+                message = output.getvalue()
+                self.output_signal.emit(message)
+                original_print(*args, **kwargs)
+
+            # Replace built-in print
+            builtins.print = gui_print
+
+            # Initialize runner
+            print("\n")
+            print("╔" + "═" * 68 + "╗")
+            print("║" + " " * 20 + "INFLUGEN RUNNER" + " " * 33 + "║")
+            print("╚" + "═" * 68 + "╝")
+            print("\n")
+
+            runner = InflugenRunner(self.base_folder)
+
+            # Verify influgen folder
+            if not runner.verify_influgen_folder():
+                print("✗ Verification failed. Please check that influgen folder exists.")
+                self.finished_signal.emit(False, "Verification failed. Check the output log.")
+                builtins.print = original_print
+                return
+
+            # Process all scaled folders
+            results = runner.process_all_scaled_folders()
+
+            if not results:
+                print("⚠ No folders were processed.")
+                self.finished_signal.emit(False, "No folders were processed. Check the output log.")
+                builtins.print = original_print
+                return
+
+            # Check results
+            success_count = sum(1 for v in results.values() if v == 'success')
+            if all(v == 'success' for v in results.values()):
+                print("✓ All folders processed successfully!")
+                self.finished_signal.emit(True,
+                                          f"Influgen processing completed successfully!\n{success_count} folders processed.")
+            else:
+                print("⚠ Some folders failed to process. Check the summary above.")
+                self.finished_signal.emit(False, f"Some folders failed.\n{success_count}/{len(results)} successful.")
+
+            # Restore original print
+            builtins.print = original_print
+
+        except Exception as e:
+            self.output_signal.emit(f"\n✗ Error during influgen processing: {e}\n")
+            self.finished_signal.emit(False, f"An error occurred: {e}")
+            import builtins
+            builtins.print = original_print
+
+
 class DOEBatchGUI(QMainWindow):
     """
     GUI for DOE Batch Setup using PyQt5
     """
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DOE Batch Simulation Setup")
-        self.setGeometry(100, 100, 800, 600)
+        self.setGeometry(100, 100, 900, 700)
 
         # Variables
         self.base_folder_path = ""
         self.csv_file_path = ""
         self.worker_thread = None
         self.piston_scaling_worker = None
+        self.influgen_worker = None
 
         # Create GUI elements
         self.create_widgets()
@@ -1135,6 +1499,46 @@ class DOEBatchGUI(QMainWindow):
         piston_layout.addLayout(piston_button_layout)
         main_layout.addWidget(piston_scaling_group)
 
+        # Influgen Section
+        influgen_group = QGroupBox("Influgen Operations")
+        influgen_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
+        influgen_layout = QVBoxLayout()
+        influgen_group.setLayout(influgen_layout)
+
+        # Info label
+        influgen_info_label = QLabel(
+            "Copy influgen files, update input.txt, and run piston_IM.cmd for all IM_Scaled_piston folders:")
+        influgen_info_label.setWordWrap(True)
+        influgen_layout.addWidget(influgen_info_label)
+
+        # Button layout
+        influgen_button_layout = QHBoxLayout()
+
+        # Run Influgen button
+        self.run_influgen_button = QPushButton("Run Influgen Processing")
+        self.run_influgen_button.setFont(QFont("Arial", 11, QFont.Bold))
+        self.run_influgen_button.setStyleSheet("""
+            QPushButton {
+                background-color: #16a085;
+                color: white;
+                padding: 12px 25px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #138d75;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.run_influgen_button.clicked.connect(self.run_influgen)
+        influgen_button_layout.addStretch()
+        influgen_button_layout.addWidget(self.run_influgen_button)
+        influgen_button_layout.addStretch()
+
+        influgen_layout.addLayout(influgen_button_layout)
+        main_layout.addWidget(influgen_group)
+
         # Output Text Area
         output_widget = QWidget()
         output_widget.setContentsMargins(20, 10, 20, 20)
@@ -1265,6 +1669,41 @@ class DOEBatchGUI(QMainWindow):
         self.copy_only_button.setText("Copy piston_pr.inp Files")
         self.scale_only_button.setText("Run Z Mesh Scaling Only")
         self.run_both_button.setText("Copy & Scale (Both)")
+
+        # Show result message
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            if "warning" in message.lower():
+                QMessageBox.warning(self, "Warning", message)
+            else:
+                QMessageBox.critical(self, "Error", message)
+
+    def run_influgen(self):
+        """Run influgen operations"""
+        base_folder = self.base_folder_entry.text()
+
+        # Validate input
+        if not base_folder:
+            QMessageBox.critical(self, "Error", "Please select a base folder first!")
+            return
+
+        # Disable button
+        self.run_influgen_button.setEnabled(False)
+        self.run_influgen_button.setText("Running...")
+        self.output_text.clear()
+
+        # Create and start worker thread
+        self.influgen_worker = InflugenWorker(base_folder)
+        self.influgen_worker.output_signal.connect(self.log_output)
+        self.influgen_worker.finished_signal.connect(self.on_influgen_finished)
+        self.influgen_worker.start()
+
+    def on_influgen_finished(self, success, message):
+        """Handle completion of influgen process"""
+        # Re-enable button
+        self.run_influgen_button.setEnabled(True)
+        self.run_influgen_button.setText("Run Influgen Processing")
 
         # Show result message
         if success:
