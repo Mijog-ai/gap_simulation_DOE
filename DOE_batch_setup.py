@@ -13,6 +13,7 @@ from pathlib import Path
 import threading
 import sys
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QLabel, QLineEdit, QPushButton,
                              QTextEdit, QFileDialog, QMessageBox, QFrame, QGroupBox)
@@ -1028,6 +1029,196 @@ class InflugenRunner:
         return results
 
 
+class GapExeRunner:
+    """Runner for gap.exe parallel execution in all T folders"""
+
+    def __init__(self, base_folder):
+        """
+        Initialize the Gap Exe Runner
+
+        Args:
+            base_folder: Path to the base folder containing all simulation files
+        """
+        self.base_folder = Path(base_folder)
+        self.simulation_folder = self.base_folder / 'simulation'
+
+    def find_all_t_folders(self):
+        """
+        Find all T folders across all IM_Scaled_piston folders
+
+        Returns:
+            list: List of tuples (t_folder_path, scaled_folder_name)
+        """
+        print("=" * 70)
+        print("FINDING ALL T FOLDERS")
+        print("=" * 70)
+
+        # Find all IM_scaled_piston folders
+        scaled_folders = sorted(self.simulation_folder.glob('IM_Scaled_piston_*'))
+
+        if not scaled_folders:
+            print("✗ No IM_Scaled_piston_* folders found!")
+            return []
+
+        print(f"\nFound {len(scaled_folders)} IM_Scaled_piston folders\n")
+
+        all_t_folders = []
+
+        for scaled_folder in scaled_folders:
+            # Find all T* folders in this scaled folder
+            t_folders = [f for f in scaled_folder.iterdir()
+                        if f.is_dir() and f.name.startswith('T')]
+
+            if t_folders:
+                print(f"📂 {scaled_folder.name}:")
+                for t_folder in t_folders:
+                    print(f"   - {t_folder.name}")
+                    all_t_folders.append((t_folder, scaled_folder.name))
+            else:
+                print(f"⚠ {scaled_folder.name}: No T folders found")
+
+        print(f"\n✓ Total T folders found: {len(all_t_folders)}")
+        print("=" * 70 + "\n")
+
+        return all_t_folders
+
+    def run_gap_exe_in_folder(self, t_folder_info):
+        """
+        Run gap.exe in a single T folder
+
+        Args:
+            t_folder_info: Tuple of (t_folder_path, scaled_folder_name)
+
+        Returns:
+            tuple: (folder_name, success: bool, output: str)
+        """
+        t_folder, scaled_folder_name = t_folder_info
+        folder_display_name = f"{scaled_folder_name}/{t_folder.name}"
+
+        try:
+            gap_exe_path = t_folder / 'gap.exe'
+
+            if not gap_exe_path.exists():
+                return folder_display_name, False, "gap.exe not found in folder"
+
+            # Change to the T folder directory
+            original_dir = os.getcwd()
+            os.chdir(t_folder)
+
+            print(f"   🚀 Running gap.exe in: {folder_display_name}")
+
+            # Run gap.exe
+            result = subprocess.run(
+                ['gap.exe'],
+                capture_output=True,
+                text=True,
+                timeout=7200  # 2 hour timeout per execution
+            )
+
+            # Change back to original directory
+            os.chdir(original_dir)
+
+            success = result.returncode == 0
+            output = result.stdout + result.stderr
+
+            if success:
+                print(f"   ✓ {folder_display_name}: Completed successfully")
+            else:
+                print(f"   ✗ {folder_display_name}: Failed (exit code: {result.returncode})")
+
+            return folder_display_name, success, output
+
+        except subprocess.TimeoutExpired:
+            os.chdir(original_dir)
+            print(f"   ⏱ {folder_display_name}: Timed out (>2 hours)")
+            return folder_display_name, False, "Execution timed out (>2 hours)"
+        except Exception as e:
+            try:
+                os.chdir(original_dir)
+            except:
+                pass
+            print(f"   ✗ {folder_display_name}: Error - {str(e)}")
+            return folder_display_name, False, f"Error: {str(e)}"
+
+    def run_gap_exe_parallel(self, max_workers=None):
+        """
+        Run gap.exe in all T folders in parallel
+
+        Args:
+            max_workers: Maximum number of parallel workers (None = use CPU count)
+
+        Returns:
+            dict: Dictionary with folder names and their execution status
+        """
+        print("=" * 70)
+        print("RUNNING gap.exe IN ALL T FOLDERS (PARALLEL)")
+        print("=" * 70)
+
+        # Find all T folders
+        all_t_folders = self.find_all_t_folders()
+
+        if not all_t_folders:
+            print("✗ No T folders found to process!")
+            return {}
+
+        # Determine number of workers
+        if max_workers is None:
+            max_workers = min(len(all_t_folders), os.cpu_count() or 4)
+
+        print(f"\n🔄 Starting parallel execution with {max_workers} workers")
+        print(f"📊 Total tasks: {len(all_t_folders)}")
+        print("=" * 70 + "\n")
+
+        results = {}
+
+        # Run gap.exe in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all tasks
+            future_to_folder = {
+                executor.submit(self.run_gap_exe_in_folder, t_folder_info): t_folder_info
+                for t_folder_info in all_t_folders
+            }
+
+            # Process completed tasks as they finish
+            for future in as_completed(future_to_folder):
+                try:
+                    folder_name, success, output = future.result()
+                    results[folder_name] = {
+                        'success': success,
+                        'output': output
+                    }
+                except Exception as e:
+                    t_folder_info = future_to_folder[future]
+                    folder_name = f"{t_folder_info[1]}/{t_folder_info[0].name}"
+                    print(f"   ✗ {folder_name}: Exception - {str(e)}")
+                    results[folder_name] = {
+                        'success': False,
+                        'output': f"Exception: {str(e)}"
+                    }
+
+        # Summary
+        print("\n" + "=" * 70)
+        print("SUMMARY - gap.exe PARALLEL EXECUTION")
+        print("=" * 70)
+        success_count = sum(1 for v in results.values() if v['success'])
+        failed_count = len(results) - success_count
+
+        print(f"Total folders:     {len(results)}")
+        print(f"Successful:        {success_count} ✓")
+        print(f"Failed:            {failed_count} ✗")
+        print(f"Success rate:      {(success_count/len(results)*100):.1f}%")
+
+        if results:
+            print("\nDetailed Results:")
+            for folder, result in sorted(results.items()):
+                status_symbol = "✓" if result['success'] else "✗"
+                print(f"   {status_symbol} {folder}")
+
+        print("=" * 70 + "\n")
+
+        return results
+
+
 class WorkerThread(QThread):
     """Worker thread for running batch setup without blocking GUI"""
     output_signal = pyqtSignal(str)
@@ -1306,6 +1497,77 @@ class InflugenWorker(QThread):
             builtins.print = original_print
 
 
+class GapExeWorker(QThread):
+    """Worker thread for gap.exe parallel execution"""
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+
+    def __init__(self, base_folder, max_workers=None):
+        super().__init__()
+        self.base_folder = base_folder
+        self.max_workers = max_workers
+
+    def run(self):
+        """Execute the gap.exe parallel process"""
+        try:
+            # Redirect print statements to GUI
+            from io import StringIO
+            import builtins
+
+            # Custom print function that emits to GUI
+            original_print = print
+
+            def gui_print(*args, **kwargs):
+                output = StringIO()
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('file', None)
+                original_print(*args, file=output, **kwargs_copy)
+                message = output.getvalue()
+                self.output_signal.emit(message)
+                original_print(*args, **kwargs)
+
+            # Replace built-in print
+            builtins.print = gui_print
+
+            # Initialize runner
+            print("\n")
+            print("╔" + "═" * 68 + "╗")
+            print("║" + " " * 16 + "gap.exe PARALLEL RUNNER" + " " * 29 + "║")
+            print("╚" + "═" * 68 + "╝")
+            print("\n")
+
+            runner = GapExeRunner(self.base_folder)
+
+            # Run gap.exe in parallel across all T folders
+            results = runner.run_gap_exe_parallel(max_workers=self.max_workers)
+
+            if not results:
+                print("⚠ No T folders were found to process.")
+                self.finished_signal.emit(False, "No T folders found. Check the output log.")
+                builtins.print = original_print
+                return
+
+            # Check results
+            success_count = sum(1 for v in results.values() if v['success'])
+            if all(v['success'] for v in results.values()):
+                print("✓ All gap.exe executions completed successfully!")
+                self.finished_signal.emit(True,
+                                          f"gap.exe parallel execution completed successfully!\n{success_count}/{len(results)} successful.")
+            else:
+                print("⚠ Some gap.exe executions failed. Check the summary above.")
+                self.finished_signal.emit(False,
+                                          f"Some executions failed.\n{success_count}/{len(results)} successful.")
+
+            # Restore original print
+            builtins.print = original_print
+
+        except Exception as e:
+            self.output_signal.emit(f"\n✗ Error during gap.exe execution: {e}\n")
+            self.finished_signal.emit(False, f"An error occurred: {e}")
+            import builtins
+            builtins.print = original_print
+
+
 class DOEBatchGUI(QMainWindow):
     """
     GUI for DOE Batch Setup using PyQt5
@@ -1322,6 +1584,7 @@ class DOEBatchGUI(QMainWindow):
         self.worker_thread = None
         self.piston_scaling_worker = None
         self.influgen_worker = None
+        self.gap_exe_worker = None
 
         # Create GUI elements
         self.create_widgets()
@@ -1539,6 +1802,46 @@ class DOEBatchGUI(QMainWindow):
         influgen_layout.addLayout(influgen_button_layout)
         main_layout.addWidget(influgen_group)
 
+        # Gap.exe Section
+        gap_exe_group = QGroupBox("gap.exe Parallel Execution")
+        gap_exe_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
+        gap_exe_layout = QVBoxLayout()
+        gap_exe_group.setLayout(gap_exe_layout)
+
+        # Info label
+        gap_exe_info_label = QLabel(
+            "Run gap.exe in all T folders across all IM_Scaled_piston folders in parallel:")
+        gap_exe_info_label.setWordWrap(True)
+        gap_exe_layout.addWidget(gap_exe_info_label)
+
+        # Button layout
+        gap_exe_button_layout = QHBoxLayout()
+
+        # Run gap.exe button
+        self.run_gap_exe_button = QPushButton("Run gap.exe (Parallel)")
+        self.run_gap_exe_button.setFont(QFont("Arial", 12, QFont.Bold))
+        self.run_gap_exe_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                padding: 15px 30px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.run_gap_exe_button.clicked.connect(self.run_gap_exe_parallel)
+        gap_exe_button_layout.addStretch()
+        gap_exe_button_layout.addWidget(self.run_gap_exe_button)
+        gap_exe_button_layout.addStretch()
+
+        gap_exe_layout.addLayout(gap_exe_button_layout)
+        main_layout.addWidget(gap_exe_group)
+
         # Output Text Area
         output_widget = QWidget()
         output_widget.setContentsMargins(20, 10, 20, 20)
@@ -1704,6 +2007,41 @@ class DOEBatchGUI(QMainWindow):
         # Re-enable button
         self.run_influgen_button.setEnabled(True)
         self.run_influgen_button.setText("Run Influgen Processing")
+
+        # Show result message
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            if "warning" in message.lower():
+                QMessageBox.warning(self, "Warning", message)
+            else:
+                QMessageBox.critical(self, "Error", message)
+
+    def run_gap_exe_parallel(self):
+        """Run gap.exe in parallel across all T folders"""
+        base_folder = self.base_folder_entry.text()
+
+        # Validate input
+        if not base_folder:
+            QMessageBox.critical(self, "Error", "Please select a base folder first!")
+            return
+
+        # Disable button
+        self.run_gap_exe_button.setEnabled(False)
+        self.run_gap_exe_button.setText("Running...")
+        self.output_text.clear()
+
+        # Create and start worker thread
+        self.gap_exe_worker = GapExeWorker(base_folder, max_workers=None)
+        self.gap_exe_worker.output_signal.connect(self.log_output)
+        self.gap_exe_worker.finished_signal.connect(self.on_gap_exe_finished)
+        self.gap_exe_worker.start()
+
+    def on_gap_exe_finished(self, success, message):
+        """Handle completion of gap.exe parallel execution"""
+        # Re-enable button
+        self.run_gap_exe_button.setEnabled(True)
+        self.run_gap_exe_button.setText("Run gap.exe (Parallel)")
 
         # Show result message
         if success:
