@@ -469,6 +469,33 @@ class DOEBatchSetup:
                     else:
                         print(f"         ⚠ options_piston.txt not found in {t_folder.name}")
 
+                    # Update thermal_piston.txt with the correct thermal scaled inp path
+                    thermal_piston_file = dest_t_folder / 'input' / 'thermal_piston.txt'
+
+                    if thermal_piston_file.exists():
+                        # Construct the path to the THERMAL scaled inp file
+                        thermal_scaled_inp_path = im_piston_path + "\\piston_pr_scaled_th.inp"
+
+                        # Read the thermal_piston.txt file
+                        with open(thermal_piston_file, 'r', encoding='latin-1') as f:
+                            thermal_content = f.read()
+
+                        # Replace the meshFile line with the new thermal path
+                        thermal_content = re.sub(
+                            r'(meshFile\s+).*?\.inp',
+                            lambda m: f'{m.group(1)}{thermal_scaled_inp_path}',
+                            thermal_content
+                        )
+
+                        # Write the updated content back
+                        with open(thermal_piston_file, 'w', encoding='latin-1') as f:
+                            f.write(thermal_content)
+
+                        print(f"         ✓ Updated thermal_piston.txt with meshFile path:")
+                        print(f"            {thermal_scaled_inp_path}")
+                    else:
+                        print(f"         ⚠ thermal_piston.txt not found in {t_folder.name}")
+
                 created_folders.append(folder_name)
 
             print("\n" + "=" * 70)
@@ -711,6 +738,7 @@ class PistonScalingRunner:
         for scaled_folder in scaled_folders:
             folder_name = scaled_folder.name
             scalar_file = scaled_folder / 'scalar.txt'
+            im_piston_folder = scaled_folder / 'IM_piston'
 
             # Check if scalar.txt exists
             if not scalar_file.exists():
@@ -727,6 +755,33 @@ class PistonScalingRunner:
 
                 if success:
                     print(f"   ✓ Successfully processed and scaled mesh")
+
+                    # Create thermal version of scaled inp file
+                    scaled_inp_file = im_piston_folder / 'piston_pr_scaled.inp'
+                    thermal_inp_file = im_piston_folder / 'piston_pr_scaled_th.inp'
+
+                    if scaled_inp_file.exists():
+                        # Read the scaled inp file
+                        with open(scaled_inp_file, 'r', encoding='latin-1') as f:
+                            thermal_inp_content = f.read()
+
+                        # Replace all instances of "gap" with "gap_piston_1"
+                        # Use word boundary regex to avoid replacing "gap" inside other words
+                        thermal_inp_content = re.sub(
+                            r'\bgap\b',
+                            'gap_piston_1',
+                            thermal_inp_content,
+                            flags=re.IGNORECASE
+                        )
+
+                        # Write the thermal inp file
+                        with open(thermal_inp_file, 'w', encoding='latin-1') as f:
+                            f.write(thermal_inp_content)
+
+                        print(f"   ✓ Created thermal inp file: piston_pr_scaled_th.inp")
+                    else:
+                        print(f"   ⚠ piston_pr_scaled.inp not found, cannot create thermal version")
+
                     results[folder_name] = 'success'
                 else:
                     print(f"   ✗ Failed to scale mesh")
