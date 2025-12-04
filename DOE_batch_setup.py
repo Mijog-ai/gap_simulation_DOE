@@ -1142,7 +1142,7 @@ class GapExeRunner:
 
     def run_gap_exe_parallel(self, max_workers=None):
         """
-        Run gap.exe in all T folders in parallel
+        Run fsti_gap.exe in all T folders in parallel
 
         Args:
             max_workers: Maximum number of parallel workers (None = use CPU count)
@@ -1151,7 +1151,7 @@ class GapExeRunner:
             dict: Dictionary with folder names and their execution status
         """
         print("=" * 70)
-        print("RUNNING gap.exe IN ALL T FOLDERS (PARALLEL)")
+        print("RUNNING fsti_gap.exe IN ALL T FOLDERS (PARALLEL)")
         print("=" * 70)
 
         # Find all T folders
@@ -1198,7 +1198,7 @@ class GapExeRunner:
 
         # Summary
         print("\n" + "=" * 70)
-        print("SUMMARY - gap.exe PARALLEL EXECUTION")
+        print("SUMMARY - fsti_gap.exe PARALLEL EXECUTION")
         print("=" * 70)
         success_count = sum(1 for v in results.values() if v['success'])
         failed_count = len(results) - success_count
@@ -1532,7 +1532,7 @@ class GapExeWorker(QThread):
             # Initialize runner
             print("\n")
             print("╔" + "═" * 68 + "╗")
-            print("║" + " " * 16 + "gap.exe PARALLEL RUNNER" + " " * 29 + "║")
+            print("║" + " " * 16 + "fsti_gap.exe PARALLEL RUNNER" + " " * 29 + "║")
             print("╚" + "═" * 68 + "╝")
             print("\n")
 
@@ -1550,11 +1550,11 @@ class GapExeWorker(QThread):
             # Check results
             success_count = sum(1 for v in results.values() if v['success'])
             if all(v['success'] for v in results.values()):
-                print("✓ All gap.exe executions completed successfully!")
+                print("✓ All fsti_gap.exe executions completed successfully!")
                 self.finished_signal.emit(True,
-                                          f"gap.exe parallel execution completed successfully!\n{success_count}/{len(results)} successful.")
+                                          f"fsti_gap.exe parallel execution completed successfully!\n{success_count}/{len(results)} successful.")
             else:
-                print("⚠ Some gap.exe executions failed. Check the summary above.")
+                print("⚠ Some fsti_gap.exe executions failed. Check the summary above.")
                 self.finished_signal.emit(False,
                                           f"Some executions failed.\n{success_count}/{len(results)} successful.")
 
@@ -1562,7 +1562,7 @@ class GapExeWorker(QThread):
             builtins.print = original_print
 
         except Exception as e:
-            self.output_signal.emit(f"\n✗ Error during gap.exe execution: {e}\n")
+            self.output_signal.emit(f"\n✗ Error during fsti_gap.exe execution: {e}\n")
             self.finished_signal.emit(False, f"An error occurred: {e}")
             import builtins
             builtins.print = original_print
@@ -1803,14 +1803,14 @@ class DOEBatchGUI(QMainWindow):
         main_layout.addWidget(influgen_group)
 
         # Gap.exe Section
-        gap_exe_group = QGroupBox("gap.exe Parallel Execution")
+        gap_exe_group = QGroupBox("fsti_gap.exe Parallel Execution")
         gap_exe_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
         gap_exe_layout = QVBoxLayout()
         gap_exe_group.setLayout(gap_exe_layout)
 
         # Info label
         gap_exe_info_label = QLabel(
-            "Run gap.exe in all T folders across all IM_Scaled_piston folders in parallel:")
+            "Run fsti_gap.exe in all T folders across all IM_Scaled_piston folders in parallel:")
         gap_exe_info_label.setWordWrap(True)
         gap_exe_layout.addWidget(gap_exe_info_label)
 
@@ -1818,7 +1818,7 @@ class DOEBatchGUI(QMainWindow):
         gap_exe_button_layout = QHBoxLayout()
 
         # Run gap.exe button
-        self.run_gap_exe_button = QPushButton("Run gap.exe (Parallel)")
+        self.run_gap_exe_button = QPushButton("Run fsti_gap.exe (Parallel)")
         self.run_gap_exe_button.setFont(QFont("Arial", 12, QFont.Bold))
         self.run_gap_exe_button.setStyleSheet("""
             QPushButton {
@@ -2041,7 +2041,7 @@ class DOEBatchGUI(QMainWindow):
         """Handle completion of gap.exe parallel execution"""
         # Re-enable button
         self.run_gap_exe_button.setEnabled(True)
-        self.run_gap_exe_button.setText("Run gap.exe (Parallel)")
+        self.run_gap_exe_button.setText("Run fsti_gap.exe (Parallel)")
 
         # Show result message
         if success:
