@@ -1159,6 +1159,10 @@ class GapExeRunner:
                 return folder_display_name, False, "fsti_gap.exe not found in folder", None
 
             print(f"   🚀 Starting fsti_gap.exe in: {folder_display_name}")
+            print(f"   📍 Working directory: {t_folder.resolve()}")
+            print(f"   📍 Path exists check: {gap_exe_path.exists()}")
+
+            print(f"   🚀 Starting fsti_gap.exe in: {folder_display_name}")
 
             # Set up process creation flags for visible console window
             creationflags = 0
@@ -1168,11 +1172,11 @@ class GapExeRunner:
 
             # Start the process with Popen for better control
             process = subprocess.Popen(
-                ['fsti_gap.exe'],
+                [str(gap_exe_path.resolve())],  # ✅ CORRECT - full path
                 cwd=str(t_folder),
                 creationflags=creationflags,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=None,
+                stderr=None,
                 text=True
             )
 
