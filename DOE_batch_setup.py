@@ -1160,15 +1160,20 @@ class GapExeRunner:
 
             print(f"   🚀 Starting fsti_gap.exe in: {folder_display_name}")
 
-            # Set up process creation flags for visible console window
-            creationflags = 0
-            if show_console and sys.platform == 'win32':
-                # CREATE_NEW_CONSOLE flag opens a new console window
-                creationflags = subprocess.CREATE_NEW_CONSOLE
+            # Prepare command based on platform
+            if sys.platform == 'win32':
+                # Windows: run directly
+                cmd = ['fsti_gap.exe']
+                creationflags = subprocess.CREATE_NEW_CONSOLE if show_console else 0
+            else:
+                # Linux/Unix: use Wine to run Windows executable
+                cmd = ['wine', 'fsti_gap.exe']
+                creationflags = 0
+                print(f"   ℹ Running via Wine on {sys.platform}")
 
             # Start the process with Popen for better control
             process = subprocess.Popen(
-                ['fsti_gap.exe'],
+                cmd,
                 cwd=str(t_folder),
                 creationflags=creationflags,
                 stdout=subprocess.PIPE,
@@ -1180,6 +1185,14 @@ class GapExeRunner:
 
             return folder_display_name, True, f"Process started with PID {process.pid}", process
 
+        except FileNotFoundError as e:
+            if 'wine' in str(e).lower():
+                print(f"   ✗ {folder_display_name}: Wine is not installed")
+                print(f"      Please install Wine: sudo apt-get install wine")
+                return folder_display_name, False, "Wine not installed. Install with: sudo apt-get install wine", None
+            else:
+                print(f"   ✗ {folder_display_name}: File not found - {str(e)}")
+                return folder_display_name, False, f"File not found: {str(e)}", None
         except Exception as e:
             print(f"   ✗ {folder_display_name}: Error - {str(e)}")
             return folder_display_name, False, f"Error: {str(e)}", None
