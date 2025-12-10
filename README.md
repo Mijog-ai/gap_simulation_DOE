@@ -5,12 +5,6 @@ This Python script provides a GUI-based tool to automate the initial setup for D
 
 ## Features
 
-### ✓ GUI Interface
-- User-friendly graphical interface using PyQt5
-- Browse buttons for folder and file selection
-- Real-time output log display
-- Automatic execution without user prompts
-
 ### ✓ CSV Parameter Import
 - Reads `lK_scale_value` parameters from CSV file
 - Supports multiple scale values for batch processing
@@ -56,25 +50,6 @@ base_folder/
 
 ## Usage
 
-### GUI Mode (Recommended)
-```bash
-python3 DOE_batch_setup.py
-```
-
-This will launch a graphical interface where you can:
-1. Select the base folder path using the Browse button
-2. Select the CSV file containing lK_scale_value parameters
-3. Click "Run Batch Setup" to execute all steps automatically
-4. View real-time progress in the output log
-5. Get a success/error popup when complete
-
-The GUI automatically:
-- Verifies the folder structure
-- Copies piston_pr.inp (overwrites if exists)
-- Extracts geometry parameters from geometry.txt
-- Reads all lK_scale_values from the CSV file
-- No user prompts during execution
-
 ### CSV File Format
 
 The CSV file should contain lK_scale_value entries with a header row:
@@ -91,35 +66,7 @@ lK_scale_value
 40
 ```
 
-Each row after the header represents a scale value to be used in batch processing.
 
-### Programmatic Usage
-
-```python
-from DOE_batch_setup import DOEBatchSetup
-
-# Initialize
-setup = DOEBatchSetup('/path/to/base_folder')
-
-# Verify folder structure
-status = setup.verify_folder_structure()
-
-# Execute Step 0
-success = setup.step0_copy_piston_pr()
-
-# Execute Step 1
-geometry_values = setup.step1_extract_geometry_values()
-
-# Read CSV values
-lk_values = setup.read_lk_scale_values('/path/to/csv_file.csv')
-
-# Access extracted values
-print(f"lK = {geometry_values['lK']} mm")
-print(f"lZ0 = {geometry_values['lZ0']} mm")
-print(f"lKG = {geometry_values['lKG']} mm")
-print(f"lSK = {geometry_values['lSK']} mm")
-print(f"lK_scale_values = {lk_values}")
-```
 
 ## Output
 
@@ -139,11 +86,7 @@ The script provides:
    lZ0        =    29.038000 mm
    lKG        =    80.753000 mm
    lSK        =    32.595000 mm
-   ```
 
-4. **Summary Report**
-   - Success/failure status of each step
-   - Dictionary of extracted values for further processing
 
 ## Test Results
 
@@ -163,18 +106,7 @@ After creating the IM_scaled_piston folders using the DOE_batch_setup.py script,
 1. Copy `piston_pr.inp` from `basefolder/INP/` to each `IM_piston` folder
 2. Run `Z_MeshScaler.py` for each scaled folder using the `scalar.txt` file
 
-### Usage
 
-```bash
-# Run both copy and scaling operations
-python3 run_piston_scaling.py /path/to/base_folder
-
-# Only copy piston_pr.inp files (no scaling)
-python3 run_piston_scaling.py /path/to/base_folder --copy-only
-
-# Only run Z_MeshScaler.py (no copying)
-python3 run_piston_scaling.py /path/to/base_folder --scale-only
-```
 
 ### What it does
 
@@ -203,38 +135,10 @@ base_folder/
     └── ...
 ```
 
-## Next Steps
 
-After completing all steps, you can:
 
-1. **Verify scaled meshes** in each IM_piston folder
-2. **Run simulations** for each scaled configuration
-3. **Analyze results** across different scale values
-4. **Post-process** simulation outputs
 
-## Requirements
 
-- Python 3.6 or higher
-- PyQt5 (install with: `pip install PyQt5`)
-- Standard library modules (os, shutil, re, csv, pathlib, threading, sys)
-
-## Error Handling
-
-The script includes comprehensive error handling:
-- ✓ Missing file/folder detection
-- ✓ CSV file validation and parsing
-- ✓ Parameter extraction validation
-- ✓ Clear error messages with GUI popups
-- ✓ Real-time progress logging
-
-## Notes
-
-- The script uses regex pattern matching to extract parameters from geometry.txt
-- All extracted values are returned as floats
-- The copy operation automatically overwrites existing files (no prompts)
-- All paths are handled using `pathlib.Path` for cross-platform compatibility
-- The GUI runs in a separate thread to remain responsive during execution
-- Print statements are redirected to the GUI output log for real-time feedback
 
 ## Author
 ### Mit Gandhi
