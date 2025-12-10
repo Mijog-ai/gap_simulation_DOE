@@ -1084,6 +1084,266 @@ class InflugenRunner:
         return results
 
 
+class GapExeRunner:
+    """Runner for fsti_gap.exe parallel execution in all T folders"""
+
+    def __init__(self, base_folder):
+        """
+        Initialize the Gap Exe Runner
+
+        Args:
+            base_folder: Path to the base folder containing all simulation files
+        """
+        self.base_folder = Path(base_folder)
+        self.simulation_folder = self.base_folder / 'simulation'
+
+    def find_all_t_folders(self):
+        """
+        Find all T folders across all IM_Scaled_piston folders
+
+        Returns:
+            list: List of tuples (t_folder_path, scaled_folder_name)
+        """
+        print("=" * 70)
+        print("FINDING ALL T FOLDERS")
+        print("=" * 70)
+
+        # Find all IM_scaled_piston folders
+        scaled_folders = sorted(self.simulation_folder.glob('IM_Scaled_piston_*'))
+
+        if not scaled_folders:
+            print("✗ No IM_Scaled_piston_* folders found!")
+            return []
+
+        print(f"\nFound {len(scaled_folders)} IM_Scaled_piston folders\n")
+
+        all_t_folders = []
+
+        for scaled_folder in scaled_folders:
+            # Find all T* folders in this scaled folder
+            t_folders = [f for f in scaled_folder.iterdir()
+                        if f.is_dir() and f.name.startswith('T')]
+
+            if t_folders:
+                print(f"📂 {scaled_folder.name}:")
+                for t_folder in t_folders:
+                    print(f"   - {t_folder.name}")
+                    all_t_folders.append((t_folder, scaled_folder.name))
+            else:
+                print(f"⚠ {scaled_folder.name}: No T folders found")
+
+        print(f"\n✓ Total T folders found: {len(all_t_folders)}")
+        print("=" * 70 + "\n")
+
+        return all_t_folders
+
+    def run_gap_exe_in_folder(self, t_folder_info, show_console=True):
+        """
+        Run fsti_gap.exe in a single T folder with visible command window
+
+        Args:
+            t_folder_info: Tuple of (t_folder_path, scaled_folder_name)
+            show_console: If True, opens a visible command window for the execution
+
+        Returns:
+            tuple: (folder_name, success: bool, output: str, process: Popen)
+        """
+        t_folder, scaled_folder_name = t_folder_info
+        folder_display_name = f"{scaled_folder_name}/{t_folder.name}"
+
+        try:
+            gap_exe_path = t_folder / 'fsti_gap.exe'
+
+            if not gap_exe_path.exists():
+                print(f"   ✗ {folder_display_name}: fsti_gap.exe not found in folder")
+                return folder_display_name, False, "fsti_gap.exe not found in folder", None
+
+            print(f"   🚀 Starting fsti_gap.exe in: {folder_display_name}")
+
+            # Set up process creation flags for visible console window
+            creationflags = 0
+            if show_console and sys.platform == 'win32':
+                # CREATE_NEW_CONSOLE flag opens a new console window
+                creationflags = subprocess.CREATE_NEW_CONSOLE
+
+            # Start the process with Popen for better control
+            process = subprocess.Popen(
+                ['fsti_gap.exe'],
+                cwd=str(t_folder),
+                creationflags=creationflags,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            print(f"   ✓ {folder_display_name}: Process started (PID: {process.pid})")
+
+            return folder_display_name, True, f"Process started with PID {process.pid}", process
+
+        except Exception as e:
+            print(f"   ✗ {folder_display_name}: Error - {str(e)}")
+            return folder_display_name, False, f"Error: {str(e)}", None
+
+    def monitor_process(self, folder_name, process, timeout=7200):
+        """
+        Monitor a single process and return its completion status
+
+        Args:
+            folder_name: Display name of the folder
+            process: subprocess.Popen object
+            timeout: Maximum time to wait in seconds (default: 2 hours)
+
+        Returns:
+            tuple: (folder_name, success: bool, output: str)
+        """
+        try:
+            # Wait for process to complete with timeout
+            stdout, stderr = process.communicate(timeout=timeout)
+
+            success = process.returncode == 0
+            output = stdout + stderr
+
+            if success:
+                print(f"   ✓ {folder_name}: Completed successfully (exit code: 0)")
+            else:
+                print(f"   ✗ {folder_name}: Failed (exit code: {process.returncode})")
+                # Print error output for debugging
+                if output:
+                    print(f"      Error output (first 500 chars):")
+                    for line in output[:500].split('\n'):
+                        if line.strip():
+                            print(f"      {line}")
+
+            return folder_name, success, output
+
+        except subprocess.TimeoutExpired:
+            process.kill()
+            print(f"   ⏱ {folder_name}: Timed out (>{timeout//3600} hours) - Process killed")
+            return folder_name, False, f"Execution timed out (>{timeout//3600} hours)"
+        except Exception as e:
+            print(f"   ✗ {folder_name}: Monitoring error - {str(e)}")
+            return folder_name, False, f"Monitoring error: {str(e)}"
+
+    def run_gap_exe_parallel(self, max_workers=None, show_console=True):
+        """
+        Run fsti_gap.exe in all T folders in parallel with visible command windows
+
+        Args:
+            max_workers: Maximum number of parallel workers (None = use CPU count)
+            show_console: If True, opens visible command windows for each execution
+
+        Returns:
+            dict: Dictionary with folder names and their execution status
+        """
+        print("=" * 70)
+        print("RUNNING fsti_gap.exe IN ALL T FOLDERS (PARALLEL)")
+        print("=" * 70)
+
+        # Find all T folders
+        all_t_folders = self.find_all_t_folders()
+
+        if not all_t_folders:
+            print("✗ No T folders found to process!")
+            return {}
+
+        # Determine number of workers (limit to CPU count for parallel executions)
+        if max_workers is None:
+            max_workers = min(len(all_t_folders), os.cpu_count() or 4)
+
+        print(f"\n🔄 Starting parallel execution with {max_workers} workers")
+        print(f"📊 Total tasks: {len(all_t_folders)}")
+        if show_console:
+            print(f"💻 Command windows will open for each execution")
+        print("=" * 70 + "\n")
+
+        # Phase 1: Start all processes
+        print("PHASE 1: STARTING ALL PROCESSES")
+        print("=" * 70)
+
+        processes = {}
+        for t_folder_info in all_t_folders:
+            folder_name, started, message, process = self.run_gap_exe_in_folder(t_folder_info, show_console)
+            if started and process:
+                processes[folder_name] = process
+            else:
+                # If failed to start, record as failed
+                processes[folder_name] = None
+
+        print(f"\n✓ Started {len([p for p in processes.values() if p is not None])} processes")
+        print("=" * 70 + "\n")
+
+        # Phase 2: Monitor all processes with ThreadPoolExecutor
+        print("PHASE 2: MONITORING ALL PROCESSES")
+        print("=" * 70)
+
+        results = {}
+
+        # Monitor processes in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit monitoring tasks for all processes
+            future_to_folder = {}
+            for folder_name, process in processes.items():
+                if process is not None:
+                    future = executor.submit(self.monitor_process, folder_name, process)
+                    future_to_folder[future] = folder_name
+                else:
+                    # Process failed to start
+                    results[folder_name] = {
+                        'success': False,
+                        'output': 'Failed to start process'
+                    }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_folder):
+                try:
+                    folder_name, success, output = future.result()
+                    results[folder_name] = {
+                        'success': success,
+                        'output': output
+                    }
+                except Exception as e:
+                    folder_name = future_to_folder[future]
+                    print(f"   ✗ {folder_name}: Exception during monitoring - {str(e)}")
+                    results[folder_name] = {
+                        'success': False,
+                        'output': f"Exception: {str(e)}"
+                    }
+
+        # Summary
+        print("\n" + "=" * 70)
+        print("SUMMARY - fsti_gap.exe PARALLEL EXECUTION")
+        print("=" * 70)
+        success_count = sum(1 for v in results.values() if v['success'])
+        failed_count = len(results) - success_count
+
+        print(f"Total folders:     {len(results)}")
+        print(f"Successful:        {success_count} ✓")
+        print(f"Failed:            {failed_count} ✗")
+        if len(results) > 0:
+            print(f"Success rate:      {(success_count/len(results)*100):.1f}%")
+
+        if results:
+            print("\nDetailed Results:")
+            for folder, result in sorted(results.items()):
+                status_symbol = "✓" if result['success'] else "✗"
+                print(f"   {status_symbol} {folder}")
+
+        # Show error details for failed executions
+        failed_results = {k: v for k, v in results.items() if not v['success']}
+        if failed_results:
+            print("\nError Details (first 300 chars of each):")
+            for folder, result in sorted(failed_results.items()):
+                print(f"\n   {folder}:")
+                error_preview = result.get('output', 'No error output captured')[:300]
+                for line in error_preview.split('\n'):
+                    if line.strip():
+                        print(f"      {line}")
+
+        print("=" * 70 + "\n")
+
+        return results
+
+
 class WorkerThread(QThread):
     """Worker thread for running batch setup without blocking GUI"""
     output_signal = pyqtSignal(str)
@@ -1362,6 +1622,78 @@ class InflugenWorker(QThread):
             builtins.print = original_print
 
 
+class GapExeWorker(QThread):
+    """Worker thread for fsti_gap.exe parallel execution"""
+    output_signal = pyqtSignal(str)
+    finished_signal = pyqtSignal(bool, str)
+
+    def __init__(self, base_folder, max_workers=None, show_console=True):
+        super().__init__()
+        self.base_folder = base_folder
+        self.max_workers = max_workers
+        self.show_console = show_console
+
+    def run(self):
+        """Execute the fsti_gap.exe parallel process"""
+        try:
+            # Redirect print statements to GUI
+            from io import StringIO
+            import builtins
+
+            # Custom print function that emits to GUI
+            original_print = print
+
+            def gui_print(*args, **kwargs):
+                output = StringIO()
+                kwargs_copy = kwargs.copy()
+                kwargs_copy.pop('file', None)
+                original_print(*args, file=output, **kwargs_copy)
+                message = output.getvalue()
+                self.output_signal.emit(message)
+                original_print(*args, **kwargs)
+
+            # Replace built-in print
+            builtins.print = gui_print
+
+            # Initialize runner
+            print("\n")
+            print("╔" + "═" * 68 + "╗")
+            print("║" + " " * 16 + "fsti_gap.exe PARALLEL RUNNER" + " " * 23 + "║")
+            print("╚" + "═" * 68 + "╝")
+            print("\n")
+
+            runner = GapExeRunner(self.base_folder)
+
+            # Run fsti_gap.exe in parallel across all T folders with visible command windows
+            results = runner.run_gap_exe_parallel(max_workers=self.max_workers, show_console=self.show_console)
+
+            if not results:
+                print("⚠ No T folders were found to process.")
+                self.finished_signal.emit(False, "No T folders found. Check the output log.")
+                builtins.print = original_print
+                return
+
+            # Check results
+            success_count = sum(1 for v in results.values() if v['success'])
+            if all(v['success'] for v in results.values()):
+                print("✓ All fsti_gap.exe executions completed successfully!")
+                self.finished_signal.emit(True,
+                                          f"fsti_gap.exe parallel execution completed successfully!\n{success_count}/{len(results)} successful.")
+            else:
+                print("⚠ Some fsti_gap.exe executions failed. Check the summary above.")
+                self.finished_signal.emit(False,
+                                          f"Some executions failed.\n{success_count}/{len(results)} successful.")
+
+            # Restore original print
+            builtins.print = original_print
+
+        except Exception as e:
+            self.output_signal.emit(f"\n✗ Error during fsti_gap.exe execution: {e}\n")
+            self.finished_signal.emit(False, f"An error occurred: {e}")
+            import builtins
+            builtins.print = original_print
+
+
 class DOEBatchGUI(QMainWindow):
     """
     GUI for DOE Batch Setup using PyQt5
@@ -1378,6 +1710,7 @@ class DOEBatchGUI(QMainWindow):
         self.worker_thread = None
         self.piston_scaling_worker = None
         self.influgen_worker = None
+        self.gap_exe_worker = None
 
         # Create GUI elements
         self.create_widgets()
@@ -1595,6 +1928,46 @@ class DOEBatchGUI(QMainWindow):
         influgen_layout.addLayout(influgen_button_layout)
         main_layout.addWidget(influgen_group)
 
+        # fsti_gap.exe Section
+        gap_exe_group = QGroupBox("fsti_gap.exe Operations")
+        gap_exe_group.setStyleSheet("QGroupBox { font-weight: bold; margin-top: 10px; }")
+        gap_exe_layout = QVBoxLayout()
+        gap_exe_group.setLayout(gap_exe_layout)
+
+        # Info label
+        gap_exe_info_label = QLabel(
+            "Run fsti_gap.exe in all T folders across all IM_Scaled_piston folders in parallel:")
+        gap_exe_info_label.setWordWrap(True)
+        gap_exe_layout.addWidget(gap_exe_info_label)
+
+        # Button layout
+        gap_exe_button_layout = QHBoxLayout()
+
+        # Run fsti_gap.exe button
+        self.run_gap_exe_button = QPushButton("Run fsti_gap.exe (Parallel)")
+        self.run_gap_exe_button.setFont(QFont("Arial", 12, QFont.Bold))
+        self.run_gap_exe_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                padding: 15px 30px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
+        self.run_gap_exe_button.clicked.connect(self.run_gap_exe_parallel)
+        gap_exe_button_layout.addStretch()
+        gap_exe_button_layout.addWidget(self.run_gap_exe_button)
+        gap_exe_button_layout.addStretch()
+
+        gap_exe_layout.addLayout(gap_exe_button_layout)
+        main_layout.addWidget(gap_exe_group)
+
         # Output Text Area
         output_widget = QWidget()
         output_widget.setContentsMargins(20, 10, 20, 20)
@@ -1760,6 +2133,41 @@ class DOEBatchGUI(QMainWindow):
         # Re-enable button
         self.run_influgen_button.setEnabled(True)
         self.run_influgen_button.setText("Run Influgen Processing")
+
+        # Show result message
+        if success:
+            QMessageBox.information(self, "Success", message)
+        else:
+            if "warning" in message.lower():
+                QMessageBox.warning(self, "Warning", message)
+            else:
+                QMessageBox.critical(self, "Error", message)
+
+    def run_gap_exe_parallel(self):
+        """Run fsti_gap.exe in parallel across all T folders with visible command windows"""
+        base_folder = self.base_folder_entry.text()
+
+        # Validate input
+        if not base_folder:
+            QMessageBox.critical(self, "Error", "Please select a base folder first!")
+            return
+
+        # Disable button
+        self.run_gap_exe_button.setEnabled(False)
+        self.run_gap_exe_button.setText("Running...")
+        self.output_text.clear()
+
+        # Create and start worker thread with visible command windows
+        self.gap_exe_worker = GapExeWorker(base_folder, max_workers=None, show_console=True)
+        self.gap_exe_worker.output_signal.connect(self.log_output)
+        self.gap_exe_worker.finished_signal.connect(self.on_gap_exe_finished)
+        self.gap_exe_worker.start()
+
+    def on_gap_exe_finished(self, success, message):
+        """Handle completion of fsti_gap.exe parallel execution"""
+        # Re-enable button
+        self.run_gap_exe_button.setEnabled(True)
+        self.run_gap_exe_button.setText("Run fsti_gap.exe (Parallel)")
 
         # Show result message
         if success:
