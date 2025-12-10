@@ -1188,21 +1188,20 @@ class GapExeRunner:
             print(f"   ✗ {folder_display_name}: Error - {str(e)}")
             return folder_display_name, False, f"Error: {str(e)}", None
 
-    def monitor_process(self, folder_name, process, timeout=7200):
+    def monitor_process(self, folder_name, process):
         """
         Monitor a single process and return its completion status
 
         Args:
             folder_name: Display name of the folder
             process: subprocess.Popen object
-            timeout: Maximum time to wait in seconds (default: 2 hours)
 
         Returns:
             tuple: (folder_name, success: bool, output: str)
         """
         try:
-            # Wait for process to complete with timeout
-            stdout, stderr = process.communicate(timeout=timeout)
+            # Wait for process to complete without timeout
+            stdout, stderr = process.communicate()
 
             success = process.returncode == 0
             output = stdout + stderr
@@ -1220,10 +1219,6 @@ class GapExeRunner:
 
             return folder_name, success, output
 
-        except subprocess.TimeoutExpired:
-            process.kill()
-            print(f"   ⏱ {folder_name}: Timed out (>{timeout//3600} hours) - Process killed")
-            return folder_name, False, f"Execution timed out (>{timeout//3600} hours)"
         except Exception as e:
             print(f"   ✗ {folder_name}: Monitoring error - {str(e)}")
             return folder_name, False, f"Monitoring error: {str(e)}"
