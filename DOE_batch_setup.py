@@ -1137,15 +1137,16 @@ class GapExeRunner:
 
         return all_t_folders
 
-    def run_gap_exe_in_folder(self, t_folder_info):
+    def run_gap_exe_in_folder(self, t_folder_info, show_console=True):
         """
-        Run fsti_gap.exe in a single T folder
+        Run fsti_gap.exe in a single T folder with visible command window
 
         Args:
             t_folder_info: Tuple of (t_folder_path, scaled_folder_name)
+            show_console: If True, opens a visible command window for the execution
 
         Returns:
-            tuple: (folder_name, success: bool, output: str)
+            tuple: (folder_name, success: bool, output: str, process: Popen)
         """
         t_folder, scaled_folder_name = t_folder_info
         folder_display_name = f"{scaled_folder_name}/{t_folder.name}"
@@ -1154,32 +1155,58 @@ class GapExeRunner:
             gap_exe_path = t_folder / 'fsti_gap.exe'
 
             if not gap_exe_path.exists():
-                return folder_display_name, False, "fsti_gap.exe not found in folder"
+                print(f"   ✗ {folder_display_name}: fsti_gap.exe not found in folder")
+                return folder_display_name, False, "fsti_gap.exe not found in folder", None
 
-            # Change to the T folder directory
-            original_dir = os.getcwd()
-            os.chdir(t_folder)
+            print(f"   🚀 Starting fsti_gap.exe in: {folder_display_name}")
 
-            print(f"   🚀 Running fsti_gap.exe in: {folder_display_name}")
+            # Set up process creation flags for visible console window
+            creationflags = 0
+            if show_console and sys.platform == 'win32':
+                # CREATE_NEW_CONSOLE flag opens a new console window
+                creationflags = subprocess.CREATE_NEW_CONSOLE
 
-            # Run gap.exe
-            result = subprocess.run(
+            # Start the process with Popen for better control
+            process = subprocess.Popen(
                 ['fsti_gap.exe'],
-                capture_output=True,
-                text=True,
-                timeout=7200  # 2 hour timeout per execution
+                cwd=str(t_folder),
+                creationflags=creationflags,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
 
-            # Change back to original directory
-            os.chdir(original_dir)
+            print(f"   ✓ {folder_display_name}: Process started (PID: {process.pid})")
 
-            success = result.returncode == 0
-            output = result.stdout + result.stderr
+            return folder_display_name, True, f"Process started with PID {process.pid}", process
+
+        except Exception as e:
+            print(f"   ✗ {folder_display_name}: Error - {str(e)}")
+            return folder_display_name, False, f"Error: {str(e)}", None
+
+    def monitor_process(self, folder_name, process, timeout=7200):
+        """
+        Monitor a single process and return its completion status
+
+        Args:
+            folder_name: Display name of the folder
+            process: subprocess.Popen object
+            timeout: Maximum time to wait in seconds (default: 2 hours)
+
+        Returns:
+            tuple: (folder_name, success: bool, output: str)
+        """
+        try:
+            # Wait for process to complete with timeout
+            stdout, stderr = process.communicate(timeout=timeout)
+
+            success = process.returncode == 0
+            output = stdout + stderr
 
             if success:
-                print(f"   ✓ {folder_display_name}: Completed successfully")
+                print(f"   ✓ {folder_name}: Completed successfully (exit code: 0)")
             else:
-                print(f"   ✗ {folder_display_name}: Failed (exit code: {result.returncode})")
+                print(f"   ✗ {folder_name}: Failed (exit code: {process.returncode})")
                 # Print error output for debugging
                 if output:
                     print(f"      Error output (first 500 chars):")
@@ -1187,26 +1214,23 @@ class GapExeRunner:
                         if line.strip():
                             print(f"      {line}")
 
-            return folder_display_name, success, output
+            return folder_name, success, output
 
         except subprocess.TimeoutExpired:
-            os.chdir(original_dir)
-            print(f"   ⏱ {folder_display_name}: Timed out (>2 hours)")
-            return folder_display_name, False, "Execution timed out (>2 hours)"
+            process.kill()
+            print(f"   ⏱ {folder_name}: Timed out (>{timeout//3600} hours) - Process killed")
+            return folder_name, False, f"Execution timed out (>{timeout//3600} hours)"
         except Exception as e:
-            try:
-                os.chdir(original_dir)
-            except:
-                pass
-            print(f"   ✗ {folder_display_name}: Error - {str(e)}")
-            return folder_display_name, False, f"Error: {str(e)}"
+            print(f"   ✗ {folder_name}: Monitoring error - {str(e)}")
+            return folder_name, False, f"Monitoring error: {str(e)}"
 
-    def run_gap_exe_parallel(self, max_workers=None):
+    def run_gap_exe_parallel(self, max_workers=None, show_console=True):
         """
-        Run fsti_gap.exe in all T folders in parallel
+        Run fsti_gap.exe in all T folders in parallel with visible command windows
 
         Args:
             max_workers: Maximum number of parallel workers (None = use CPU count)
+            show_console: If True, opens visible command windows for each execution
 
         Returns:
             dict: Dictionary with folder names and their execution status
@@ -1222,25 +1246,54 @@ class GapExeRunner:
             print("✗ No T folders found to process!")
             return {}
 
-        # Determine number of workers
+        # Determine number of workers (limit to CPU count for parallel executions)
         if max_workers is None:
             max_workers = min(len(all_t_folders), os.cpu_count() or 4)
 
         print(f"\n🔄 Starting parallel execution with {max_workers} workers")
         print(f"📊 Total tasks: {len(all_t_folders)}")
+        if show_console:
+            print(f"💻 Command windows will open for each execution")
         print("=" * 70 + "\n")
+
+        # Phase 1: Start all processes
+        print("PHASE 1: STARTING ALL PROCESSES")
+        print("=" * 70)
+
+        processes = {}
+        for t_folder_info in all_t_folders:
+            folder_name, started, message, process = self.run_gap_exe_in_folder(t_folder_info, show_console)
+            if started and process:
+                processes[folder_name] = process
+            else:
+                # If failed to start, record as failed
+                processes[folder_name] = None
+
+        print(f"\n✓ Started {len([p for p in processes.values() if p is not None])} processes")
+        print("=" * 70 + "\n")
+
+        # Phase 2: Monitor all processes with ThreadPoolExecutor
+        print("PHASE 2: MONITORING ALL PROCESSES")
+        print("=" * 70)
 
         results = {}
 
-        # Run gap.exe in parallel using ThreadPoolExecutor
+        # Monitor processes in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_folder = {
-                executor.submit(self.run_gap_exe_in_folder, t_folder_info): t_folder_info
-                for t_folder_info in all_t_folders
-            }
+            # Submit monitoring tasks for all processes
+            future_to_folder = {}
+            for folder_name, process in processes.items():
+                if process is not None:
+                    future = executor.submit(self.monitor_process, folder_name, process)
+                    future_to_folder[future] = folder_name
+                else:
+                    # Process failed to start
+                    results[folder_name] = {
+                        'success': False,
+                        'output': 'Failed to start process'
+                    }
 
-            # Process completed tasks as they finish
+            # Collect results as they complete
             for future in as_completed(future_to_folder):
                 try:
                     folder_name, success, output = future.result()
@@ -1249,9 +1302,8 @@ class GapExeRunner:
                         'output': output
                     }
                 except Exception as e:
-                    t_folder_info = future_to_folder[future]
-                    folder_name = f"{t_folder_info[1]}/{t_folder_info[0].name}"
-                    print(f"   ✗ {folder_name}: Exception - {str(e)}")
+                    folder_name = future_to_folder[future]
+                    print(f"   ✗ {folder_name}: Exception during monitoring - {str(e)}")
                     results[folder_name] = {
                         'success': False,
                         'output': f"Exception: {str(e)}"
@@ -1267,7 +1319,8 @@ class GapExeRunner:
         print(f"Total folders:     {len(results)}")
         print(f"Successful:        {success_count} ✓")
         print(f"Failed:            {failed_count} ✗")
-        print(f"Success rate:      {(success_count/len(results)*100):.1f}%")
+        if len(results) > 0:
+            print(f"Success rate:      {(success_count/len(results)*100):.1f}%")
 
         if results:
             print("\nDetailed Results:")
@@ -1574,10 +1627,11 @@ class GapExeWorker(QThread):
     output_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
 
-    def __init__(self, base_folder, max_workers=None):
+    def __init__(self, base_folder, max_workers=None, show_console=True):
         super().__init__()
         self.base_folder = base_folder
         self.max_workers = max_workers
+        self.show_console = show_console
 
     def run(self):
         """Execute the gap.exe parallel process"""
@@ -1604,14 +1658,14 @@ class GapExeWorker(QThread):
             # Initialize runner
             print("\n")
             print("╔" + "═" * 68 + "╗")
-            print("║" + " " * 16 + "fsti_gap.exe PARALLEL RUNNER" + " " * 29 + "║")
+            print("║" + " " * 16 + "fsti_gap.exe PARALLEL RUNNER" + " " * 23 + "║")
             print("╚" + "═" * 68 + "╝")
             print("\n")
 
             runner = GapExeRunner(self.base_folder)
 
-            # Run gap.exe in parallel across all T folders
-            results = runner.run_gap_exe_parallel(max_workers=self.max_workers)
+            # Run gap.exe in parallel across all T folders with visible command windows
+            results = runner.run_gap_exe_parallel(max_workers=self.max_workers, show_console=self.show_console)
 
             if not results:
                 print("⚠ No T folders were found to process.")
@@ -2090,7 +2144,7 @@ class DOEBatchGUI(QMainWindow):
                 QMessageBox.critical(self, "Error", message)
 
     def run_gap_exe_parallel(self):
-        """Run gap.exe in parallel across all T folders"""
+        """Run gap.exe in parallel across all T folders with visible command windows"""
         base_folder = self.base_folder_entry.text()
 
         # Validate input
@@ -2103,8 +2157,8 @@ class DOEBatchGUI(QMainWindow):
         self.run_gap_exe_button.setText("Running...")
         self.output_text.clear()
 
-        # Create and start worker thread
-        self.gap_exe_worker = GapExeWorker(base_folder, max_workers=None)
+        # Create and start worker thread with visible command windows
+        self.gap_exe_worker = GapExeWorker(base_folder, max_workers=None, show_console=True)
         self.gap_exe_worker.output_signal.connect(self.log_output)
         self.gap_exe_worker.finished_signal.connect(self.on_gap_exe_finished)
         self.gap_exe_worker.start()
