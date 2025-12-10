@@ -237,9 +237,5 @@ The script includes comprehensive error handling:
 - Print statements are redirected to the GUI output log for real-time feedback
 
 ## Author
-Created for MZ hydraulic pump simulation batch processing
+### Mit Gandhi
 
-## Version
-3.0.0 - PyQt5 GUI-based version with modern interface and threading
-2.0.0 - GUI-based version with CSV import and automatic execution (no prompts)
-1.0.0 - Initial release with Step 0 and Step 1 implementation
