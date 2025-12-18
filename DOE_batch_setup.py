@@ -362,10 +362,14 @@ class DOEBatchSetup:
                 print(f"      📁 Created IM_piston folder: {im_piston_path}")
 
                 # Calculate scaled values
-                scaled_lk = base_lk + scale_value
-                scaled_lZ0 = base_lZ0 - scale_value
+                # Only lKG is changed, lK, lZ0, lSK remain constant from base
+                # scaled_lk = base_lk + scale_value
+                # scaled_lZ0 = base_lZ0 - scale_value
+                scaled_lk = base_lk  # Keep constant
+                scaled_lZ0 = base_lZ0  # Keep constant
                 scaled_lKG = base_lKG + (0.86 * scale_value)
-                scaled_lSK = base_lSK + (0.45 * scale_value)
+                # scaled_lSK = base_lSK + (0.45 * scale_value)
+                scaled_lSK = base_lSK  # Keep constant
 
                 # Create modified scalar.txt content
                 modified_scalar = scalar_lines.copy()
@@ -407,40 +411,42 @@ class DOEBatchSetup:
                         geometry_content = f.read()
 
                     # Update the geometry values using regex
-                    geometry_content = re.sub(
-                        r'(^\s*lK\s+)[-+]?\d*\.?\d+',
-                        lambda m: f'{m.group(1)}{scaled_lk}',
-                        geometry_content,
-                        flags=re.MULTILINE
-                    )
-                    geometry_content = re.sub(
-                        r'(^\s*lZ0\s+)[-+]?\d*\.?\d+',
-                        lambda m: f'{m.group(1)}{scaled_lZ0}',
-                        geometry_content,
-                        flags=re.MULTILINE
-                    )
+                    # Only update lKG, keep lK, lZ0, lSK constant from base
+                    # geometry_content = re.sub(
+                    #     r'(^\s*lK\s+)[-+]?\d*\.?\d+',
+                    #     lambda m: f'{m.group(1)}{scaled_lk}',
+                    #     geometry_content,
+                    #     flags=re.MULTILINE
+                    # )
+                    # geometry_content = re.sub(
+                    #     r'(^\s*lZ0\s+)[-+]?\d*\.?\d+',
+                    #     lambda m: f'{m.group(1)}{scaled_lZ0}',
+                    #     geometry_content,
+                    #     flags=re.MULTILINE
+                    # )
                     geometry_content = re.sub(
                         r'(^\s*lKG\s+)[-+]?\d*\.?\d+',
                         lambda m: f'{m.group(1)}{scaled_lKG}',
                         geometry_content,
                         flags=re.MULTILINE
                     )
-                    geometry_content = re.sub(
-                        r'(^\s*lSK\s+)[-+]?\d*\.?\d+',
-                        lambda m: f'{m.group(1)}{scaled_lSK}',
-                        geometry_content,
-                        flags=re.MULTILINE
-                    )
+                    # geometry_content = re.sub(
+                    #     r'(^\s*lSK\s+)[-+]?\d*\.?\d+',
+                    #     lambda m: f'{m.group(1)}{scaled_lSK}',
+                    #     geometry_content,
+                    #     flags=re.MULTILINE
+                    # )
 
                     # Write modified geometry.txt
                     with open(geometry_dest, 'w', encoding='utf-8') as f:
                         f.write(geometry_content)
 
                     print(f"         ✓ Created geometry.txt in input folder with scaled values:")
-                    print(f"            lK  = {scaled_lk:.6f}")
-                    print(f"            lZ0 = {scaled_lZ0:.6f}")
+                    # Only lKG is changed, lK, lZ0, lSK remain constant from base
+                    # print(f"            lK  = {scaled_lk:.6f}")
+                    # print(f"            lZ0 = {scaled_lZ0:.6f}")
                     print(f"            lKG = {scaled_lKG:.6f}")
-                    print(f"            lSK = {scaled_lSK:.6f}")
+                    # print(f"            lSK = {scaled_lSK:.6f}")
 
                     # Update options_piston.txt with the correct IM_piston_path
                     options_piston_file = dest_t_folder / 'input' / 'options_piston.txt'
